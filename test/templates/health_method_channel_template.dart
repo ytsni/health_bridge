@@ -83,30 +83,30 @@ void main() {
 
   group('Writes', () {
     test('writeHealthData forwards writeData payload', () async {
-      ctx.channel.when('writeData', true);
+      ctx.channel.when('writeData', ['record-1']);
 
-      final success = await ctx.health.writeHealthData(
+      final recordIds = await ctx.health.writeHealthData(
         value: 80,
         type: HealthDataType.HEART_RATE,
         startTime: HealthFixtures.start,
         endTime: HealthFixtures.end,
       );
 
-      expect(success, isTrue);
+      expect(recordIds, ['record-1']);
       final call = ctx.channel.lastCallFor('writeData');
       expect(call, isNotNull);
     });
 
     test('writeWorkoutData forwards workout payload', () async {
-      ctx.channel.when('writeWorkoutData', true);
+      ctx.channel.when('writeWorkoutData', ['workout-record']);
 
-      final success = await ctx.health.writeWorkoutData(
+      final recordIds = await ctx.health.writeWorkoutData(
         activityType: HealthWorkoutActivityType.RUNNING,
         start: HealthFixtures.start,
         end: HealthFixtures.end,
       );
 
-      expect(success, isTrue);
+      expect(recordIds, ['workout-record']);
       final call = ctx.channel.lastCallFor('writeWorkoutData');
       expect(call, isNotNull);
     });

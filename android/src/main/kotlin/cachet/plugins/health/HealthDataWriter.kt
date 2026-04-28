@@ -156,17 +156,28 @@ class HealthDataWriter(
         val record = createRecord(type, startTime, endTime, value, metadata)
 
         if (record == null) {
-            result.success(false)
+            result.error(
+                    "WRITE_DATA_ERROR",
+                    "Error writing $type",
+                    "Unsupported data type"
+            )
             return
         }
 
         scope.launch {
             try {
-                healthConnectClient.insertRecords(listOf(record))
-                result.success(true)
+                val response = healthConnectClient.insertRecords(listOf(record))
+                result.success(response.recordIdsList)
             } catch (e: Exception) {
                 Log.e("FLUTTER_HEALTH::ERROR", "Error writing $type: ${e.message}")
-                result.success(false)
+                result.error(
+                        "WRITE_DATA_ERROR",
+                        "Error writing $type",
+                        mapOf(
+                                "message" to e.message,
+                                "stackTrace" to e.stackTraceToString()
+                        )
+                )
             }
         }
     }
@@ -188,27 +199,31 @@ class HealthDataWriter(
                 )
 
                 scope.launch {
-                        try {
-                                val record = ActivityIntensityRecord(
-                                        startTime = startTime,
-                                        startZoneOffset = null,
-                                        endTime = endTime,
-                                        endZoneOffset = null,
-                                        activityIntensityType = intensityType,
-                                        metadata = metadata,
-                                )
-                                healthConnectClient.insertRecords(listOf(record))
-                                result.success(true)
-                                Log.i("FLUTTER_HEALTH::SUCCESS", "[Health Connect] Activity intensity was successfully added!")
-                        } catch (e: Exception) {
-                                Log.e(
-                                                "FLUTTER_HEALTH::ERROR",
-                                                "[Health Connect] There was an error adding the activity intensity record"
-                                )
-                                Log.e("FLUTTER_HEALTH::ERROR", e.message ?: "unknown error")
-                                Log.e("FLUTTER_HEALTH::ERROR", e.stackTraceToString())
-                                result.success(false)
-                        }
+                    try {
+                            val record = ActivityIntensityRecord(
+                                    startTime = startTime,
+                                    startZoneOffset = null,
+                                    endTime = endTime,
+                                    endZoneOffset = null,
+                                    activityIntensityType = intensityType,
+                                    metadata = metadata,
+                            )
+                            val response = healthConnectClient.insertRecords(listOf(record))
+                            Log.i("FLUTTER_HEALTH::SUCCESS", "[Health Connect] Activity intensity was successfully added!")
+                            result.success(response.recordIdsList)
+                    } catch (e: Exception) {
+                            Log.e(
+                                            "FLUTTER_HEALTH::ERROR",
+                                            "[Health Connect] There was an error adding the activity intensity record"
+                            )
+                            Log.e("FLUTTER_HEALTH::ERROR", e.message ?: "unknown error")
+                            Log.e("FLUTTER_HEALTH::ERROR", e.stackTraceToString())
+                            result.error(
+                                    "WRITE_ACTIVITY_INTENSITY_ERROR",
+                                    "[Health Connect] There was an error adding the activity intensity record",
+                                    e.message ?: "unknown error"
+                            )
+                    }
                 }
         }
 
@@ -235,8 +250,12 @@ class HealthDataWriter(
         val workoutMetadata = buildMetadata(recordingMethod = recordingMethod, deviceType = deviceType)
 
         if (!HealthConstants.workoutTypeMap.containsKey(type)) {
-            result.success(false)
             Log.w("FLUTTER_HEALTH::ERROR", "[Health Connect] Workout type not supported")
+            result.error(
+                    "WRITE_WORKOUT_ERROR",
+                    "[Health Connect] Workout type not supported",
+                    "Unsupported workout type"
+            )
             return
         }
 
@@ -288,9 +307,9 @@ class HealthDataWriter(
                     )
                 }
 
-                healthConnectClient.insertRecords(list)
-                result.success(true)
+                val response = healthConnectClient.insertRecords(list)
                 Log.i("FLUTTER_HEALTH::SUCCESS", "[Health Connect] Workout was successfully added!")
+                result.success(response.recordIdsList)
             } catch (e: Exception) {
                 Log.w(
                         "FLUTTER_HEALTH::ERROR",
@@ -298,7 +317,11 @@ class HealthDataWriter(
                 )
                 Log.w("FLUTTER_HEALTH::ERROR", e.message ?: "unknown error")
                 Log.w("FLUTTER_HEALTH::ERROR", e.stackTrace.toString())
-                result.success(false)
+                result.error(
+                        "WRITE_WORKOUT_ERROR",
+                        "[Health Connect] There was an error adding the workout",
+                        e.message ?: "unknown error"
+                )
             }
         }
     }
@@ -309,6 +332,8 @@ class HealthDataWriter(
      *
      * @param call Method call containing 'systolic', 'diastolic', 'startTime', 'recordingMethod'
      * @param result Flutter result callback returning boolean success status
+     *
+     * @return mapOf ("recordIdsList" to response.recordIdsList) and `false` in case of error
      */
     fun writeBloodPressure(call: MethodCall, result: Result) {
         val systolic = call.argument<Double>("systolic")!!
@@ -327,7 +352,7 @@ class HealthDataWriter(
                     clientRecordVersion = clientRecordVersion?.toLong(),
                     deviceType = deviceType,
                 )
-                healthConnectClient.insertRecords(
+                val response = healthConnectClient.insertRecords(
                         listOf(
                                 BloodPressureRecord(
                                         time = startTime,
@@ -338,19 +363,24 @@ class HealthDataWriter(
                                 ),
                         ),
                 )
-                result.success(true)
                 Log.i(
                         "FLUTTER_HEALTH::SUCCESS",
                         "[Health Connect] Blood pressure was successfully added!",
                 )
+                result.success(response.recordIdsList)
+
             } catch (e: Exception) {
                 Log.w(
-                        "FLUTTER_HEALTH::ERROR",
-                        "[Health Connect] There was an error adding the blood pressure",
+                    "FLUTTER_HEALTH::ERROR",
+                    "[Health Connect] There was an error adding the blood pressure",
                 )
                 Log.w("FLUTTER_HEALTH::ERROR", e.message ?: "unknown error")
                 Log.w("FLUTTER_HEALTH::ERROR", e.stackTrace.toString())
-                result.success(false)
+                result.error(
+                    "WRITE_BLOOD_PRESSURE_ERROR",
+                    "[Health Connect] There was an error adding the Blood Pressure",
+                    e.message
+                )
             }
         }
     }
@@ -388,6 +418,8 @@ class HealthDataWriter(
      * @param result
      * ```
      * Flutter result callback returning boolean success status
+     *
+     * @return mapOf ("recordIdsList" to response.recordIdsList) and `false` in case of error
      */
     fun writeMeal(call: MethodCall, result: Result) {
         val startTime = Instant.ofEpochMilli(call.argument<Long>("start_time")!!)
@@ -502,9 +534,9 @@ class HealthDataWriter(
                                                 ?: MealType.MEAL_TYPE_UNKNOWN
                         ),
                 )
-                healthConnectClient.insertRecords(list)
-                result.success(true)
+                val response = healthConnectClient.insertRecords(list)
                 Log.i("FLUTTER_HEALTH::SUCCESS", "[Health Connect] Meal was successfully added!")
+                result.success(response.recordIdsList)
             } catch (e: Exception) {
                 Log.w(
                         "FLUTTER_HEALTH::ERROR",
@@ -512,7 +544,11 @@ class HealthDataWriter(
                 )
                 Log.w("FLUTTER_HEALTH::ERROR", e.message ?: "unknown error")
                 Log.w("FLUTTER_HEALTH::ERROR", e.stackTrace.toString())
-                result.success(false)
+                result.error(
+                        "WRITE_MEAL_ERROR",
+                        "[Health Connect] There was an error adding the meal",
+                        e.message
+                )
             }
         }
     }
@@ -531,6 +567,8 @@ class HealthDataWriter(
      * @param result
      * ```
      * Flutter result callback returning boolean success status
+     *
+     * @return mapOf ("recordIdsList" to response.recordIdsList) and `false` in case of error
      */
     fun writeMultipleSpeedData(call: MethodCall, result: Result) {
         val startTime = call.argument<Long>("startTime")!!
@@ -561,15 +599,19 @@ class HealthDataWriter(
                                 metadata = metadata,
                         )
 
-                healthConnectClient.insertRecords(listOf(speedRecord))
-                result.success(true)
+                val response = healthConnectClient.insertRecords(listOf(speedRecord))
                 Log.i(
                         "FLUTTER_HEALTH::SUCCESS",
                         "Successfully wrote ${speedSamples.size} speed samples"
                 )
+                result.success(response.recordIdsList)
             } catch (e: Exception) {
                 Log.e("FLUTTER_HEALTH::ERROR", "Error writing speed data: ${e.message}")
-                result.success(false)
+                result.error(
+                        "WRITE_SPEED_DATA_ERROR",
+                        "Error writing speed data",
+                        e.message ?: "unknown error"
+                )
             }
         }
     }
@@ -981,7 +1023,7 @@ class HealthDataWriter(
                 val response =
                     healthConnectClient.readRecord(
                         ExerciseSessionRecord::class,
-                        workoutUUID
+                        "$workoutUUID"
                     )
                 val session = response.record
                 if (session == null) {

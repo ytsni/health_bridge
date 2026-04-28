@@ -58,16 +58,16 @@ void main() {
     });
 
     test('aligns values for sleep types and uses default unit', () async {
-      ctx.channel.when('writeData', true);
+      ctx.channel.when('writeData', ['record-1']);
 
-      final success = await ctx.health.writeHealthData(
+      final recordIds = await ctx.health.writeHealthData(
         value: 99,
         type: HealthDataType.SLEEP_IN_BED,
         startTime: HealthFixtures.start,
         endTime: HealthFixtures.end,
       );
 
-      expect(success, isTrue);
+      expect(recordIds, ['record-1']);
       final call = ctx.channel.lastCallFor('writeData');
       expect(call, isNotNull);
       final args = Map<String, dynamic>.from(call!.arguments as Map);
@@ -76,9 +76,9 @@ void main() {
     });
 
     test('forwards data unit and recording method', () async {
-      ctx.channel.when('writeData', true);
+      ctx.channel.when('writeData', ['record-2']);
 
-      final success = await ctx.health.writeHealthData(
+      final recordIds = await ctx.health.writeHealthData(
         value: 80,
         type: HealthDataType.HEART_RATE,
         unit: HealthDataUnit.BEATS_PER_MINUTE,
@@ -87,7 +87,7 @@ void main() {
         recordingMethod: RecordingMethod.manual,
       );
 
-      expect(success, isTrue);
+      expect(recordIds, ['record-2']);
       final call = ctx.channel.lastCallFor('writeData');
       expect(call, isNotNull);
       final args = Map<String, dynamic>.from(call!.arguments as Map);
@@ -115,16 +115,16 @@ void main() {
 
   group('writeBloodPressure', () {
     test('forwards payload', () async {
-      ctx.channel.when('writeBloodPressure', true);
+      ctx.channel.when('writeBloodPressure', ['bp-record']);
 
-      final success = await ctx.health.writeBloodPressure(
+      final recordIds = await ctx.health.writeBloodPressure(
         systolic: 120,
         diastolic: 80,
         startTime: HealthFixtures.start,
         endTime: HealthFixtures.end,
       );
 
-      expect(success, isTrue);
+      expect(recordIds, ['bp-record']);
       final call = ctx.channel.lastCallFor('writeBloodPressure');
       expect(call, isNotNull);
       final args = Map<String, dynamic>.from(call!.arguments as Map);
@@ -159,9 +159,9 @@ void main() {
     });
 
     test('forwards meal payload', () async {
-      ctx.channel.when('writeMeal', true);
+      ctx.channel.when('writeMeal', ['meal-record']);
 
-      final success = await ctx.health.writeMeal(
+      final recordIds = await ctx.health.writeMeal(
         mealType: MealType.DINNER,
         startTime: HealthFixtures.start,
         endTime: HealthFixtures.end,
@@ -170,7 +170,7 @@ void main() {
         protein: 20,
       );
 
-      expect(success, isTrue);
+      expect(recordIds, ['meal-record']);
       final call = ctx.channel.lastCallFor('writeMeal');
       expect(call, isNotNull);
       final args = Map<String, dynamic>.from(call!.arguments as Map);
@@ -271,16 +271,16 @@ void main() {
     test(
       'forwards insulin delivery payload',
       () async {
-        ctx.channel.when('writeInsulinDelivery', true);
+        ctx.channel.when('writeInsulinDelivery', ['insulin-record']);
 
-        final success = await ctx.health.writeInsulinDelivery(
+        final recordIds = await ctx.health.writeInsulinDelivery(
           3,
           InsulinDeliveryReason.BOLUS,
           HealthFixtures.start,
           HealthFixtures.end,
         );
 
-        expect(success, isTrue);
+        expect(recordIds, ['insulin-record']);
         final call = ctx.channel.lastCallFor('writeInsulinDelivery');
         expect(call, isNotNull);
         final args = Map<String, dynamic>.from(call!.arguments as Map);

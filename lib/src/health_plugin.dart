@@ -39,6 +39,11 @@ part of '../health.dart';
 class Health {
   static const MethodChannel _channel = MethodChannel('flutter_health');
 
+  Future<List<String>> _invokeStringListMethod(String method, Map<String, dynamic> arguments) async {
+    final List<dynamic>? result = await _channel.invokeMethod<List<dynamic>>(method, arguments);
+    return result?.cast<String>() ?? [];
+  }
+
   String? _deviceId;
   final DeviceInfoPlugin _deviceInfo;
   HealthConnectSdkStatus _healthConnectSdkStatus = HealthConnectSdkStatus.sdkUnavailable;
@@ -526,7 +531,7 @@ class Health {
   ///
   /// Values for Sleep and Headache are ignored and will be automatically assigned
   /// the default value.
-  Future<bool> writeHealthData({
+  Future<List<String>> writeHealthData({
     required double value,
     HealthDataUnit? unit,
     required HealthDataType type,
@@ -595,14 +600,15 @@ class Health {
       'clientRecordId': clientRecordId,
       'clientRecordVersion': clientRecordVersion,
     };
-    bool? success = await _channel.invokeMethod('writeData', args);
-    return success ?? false;
+    // bool? success = await _channel.invokeMethod('writeData', args);
+    // return success ?? false;
+    return _invokeStringListMethod('writeData', args);
   }
 
   /// Writes an [ActivityIntensityRecord] to Google Health Connect.
   ///
   /// This API is Android only.
-  Future<bool> writeActivityIntensity({
+  Future<List<String>> writeActivityIntensity({
     required ActivityIntensityLevel intensityLevel,
     required DateTime startTime,
     DateTime? endTime,
@@ -635,8 +641,9 @@ class Health {
       'clientRecordVersion': clientRecordVersion,
     };
 
-    final bool? success = await _channel.invokeMethod('writeActivityIntensity', args);
-    return success ?? false;
+    // final bool? success = await _channel.invokeMethod('writeActivityIntensity', args);
+    // return success ?? false;
+    return _invokeStringListMethod('writeActivityIntensity', args);
   }
 
   /// Deletes all records of the given [type] for a given period of time.
@@ -721,7 +728,7 @@ class Health {
   ///    Simply set [endTime] equal to [startTime] if the blood pressure is measured
   ///    only at a specific point in time. If omitted, [endTime] is set to [startTime].
   ///  * [recordingMethod] - the recording method of the data point.
-  Future<bool> writeBloodPressure({
+  Future<List<String>> writeBloodPressure({
     required int systolic,
     required int diastolic,
     required DateTime startTime,
@@ -749,7 +756,8 @@ class Health {
       'clientRecordId': clientRecordId,
       'clientRecordVersion': clientRecordVersion,
     };
-    return await _channel.invokeMethod('writeBloodPressure', args) == true;
+    // return await _channel.invokeMethod('writeBloodPressure', args) == true;
+    return _invokeStringListMethod('writeBloodPressure', args);
   }
 
   /// Saves blood oxygen saturation record.
@@ -765,7 +773,7 @@ class Health {
   ///    Simply set [endTime] equal to [startTime] if the blood oxygen saturation
   ///    is measured only at a specific point in time (default).
   ///  * [recordingMethod] - the recording method of the data point.
-  Future<bool> writeBloodOxygen({
+  Future<List<String>> writeBloodOxygen({
     required double saturation,
     required DateTime startTime,
     DateTime? endTime,
@@ -780,10 +788,31 @@ class Health {
     if (startTime.isAfter(endTime)) {
       throw ArgumentError("startTime must be equal or earlier than endTime");
     }
-    bool? success;
+    // bool? success;
 
+    // if (Platform.isIOS) {
+    //   success = await writeHealthData(
+    //     value: saturation,
+    //     type: HealthDataType.BLOOD_OXYGEN,
+    //     startTime: startTime,
+    //     endTime: endTime,
+    //     recordingMethod: recordingMethod,
+    //   );
+    // } else if (Platform.isAndroid) {
+    //   Map<String, dynamic> args = {
+    //     'value': saturation,
+    //     'startTime': startTime.millisecondsSinceEpoch,
+    //     'endTime': endTime.millisecondsSinceEpoch,
+    //     'dataTypeKey': HealthDataType.BLOOD_OXYGEN.name,
+    //     'recordingMethod': recordingMethod.toInt(),
+    //   };
+    //   success = await _channel.invokeMethod('writeBloodOxygen', args);
+    // }
+    // return success ?? false;
+    //
+    List<String>? recordIds;
     if (Platform.isIOS) {
-      success = await writeHealthData(
+      recordIds = await writeHealthData(
         value: saturation,
         type: HealthDataType.BLOOD_OXYGEN,
         startTime: startTime,
@@ -798,9 +827,9 @@ class Health {
         'dataTypeKey': HealthDataType.BLOOD_OXYGEN.name,
         'recordingMethod': recordingMethod.toInt(),
       };
-      success = await _channel.invokeMethod('writeBloodOxygen', args);
+      recordIds = await _invokeStringListMethod('writeBloodOxygen', args);
     }
-    return success ?? false;
+    return recordIds ?? [];
   }
 
   /// Saves meal record into Apple Health or Health Connect.
@@ -856,7 +885,7 @@ class Health {
   ///  * [water] - optional water information.
   ///  * [zinc] - optional zinc information.
   ///  * [recordingMethod] - the recording method of the data point.
-  Future<bool> writeMeal({
+  Future<List<String>> writeMeal({
     required MealType mealType,
     required DateTime startTime,
     required DateTime endTime,
@@ -965,8 +994,9 @@ class Health {
       'zinc': zinc,
       'recordingMethod': recordingMethod.toInt(),
     };
-    bool? success = await _channel.invokeMethod('writeMeal', args);
-    return success ?? false;
+    // bool? success = await _channel.invokeMethod('writeMeal', args);
+    // return success ?? false;
+    return _invokeStringListMethod('writeMeal', args);
   }
 
   /// Save menstruation flow into Apple Health and Google Health Connect.
@@ -1006,6 +1036,10 @@ class Health {
       'dataTypeKey': HealthDataType.MENSTRUATION_FLOW.name,
       'recordingMethod': recordingMethod.toInt(),
     };
+    if (Platform.isAndroid) {
+      return (await _invokeStringListMethod('writeMenstruationFlow', args)).isNotEmpty;
+    }
+
     return await _channel.invokeMethod('writeMenstruationFlow', args) == true;
   }
 
@@ -1071,7 +1105,7 @@ class Health {
   ///    It must be equal to or earlier than [endTime].
   ///  * [endTime] - the end time when the meal was consumed.
   ///    It must be equal to or later than [startTime].
-  Future<bool> writeInsulinDelivery(
+  Future<List<String>> writeInsulinDelivery(
     double units,
     InsulinDeliveryReason reason,
     DateTime startTime,
@@ -1096,8 +1130,10 @@ class Health {
       'endTime': endTime.millisecondsSinceEpoch,
     };
 
-    bool? success = await _channel.invokeMethod('writeInsulinDelivery', args);
-    return success ?? false;
+    // bool? success = await _channel.invokeMethod('writeInsulinDelivery', args);
+    // return success ?? false;
+    List<String>? recordIds = await _invokeStringListMethod('writeInsulinDelivery', args);
+    return recordIds;
   }
 
   /// [iOS only] Fetch a `HealthDataPoint` by `uuid` and `type`. Returns `null` if no matching record.
@@ -1241,10 +1277,7 @@ class Health {
   /// Fetch the next page of changes for a previously created token.
   ///
   /// Android only. Returns null on iOS or if an error occurs.
-  Future<HealthChangesResponse?> getChanges({
-    required String changesToken,
-    bool includeSelf = false,
-  }) async {
+  Future<HealthChangesResponse?> getChanges({required String changesToken, bool includeSelf = false}) async {
     if (Platform.isIOS) return null;
 
     await _checkIfHealthConnectAvailableOnAndroid();
@@ -1494,7 +1527,7 @@ class Health {
 
   /// Write workout data to Apple Health or Google Health Connect.
   ///
-  /// Returns true if the workout data was successfully added.
+  /// Returns list of recordsIds of the saved workout data if successful, error message otherwise.
   ///
   /// Parameters:
   ///  - [activityType] The type of activity performed.
@@ -1509,7 +1542,7 @@ class Health {
   ///  - [title] The title of the workout.
   ///    *ONLY FOR HEALTH CONNECT* Default value is the [activityType], e.g. "STRENGTH_TRAINING".
   ///  - [recordingMethod] The recording method of the data point, automatic by default (on iOS this can only be automatic or manual).
-  Future<bool> writeWorkoutData({
+  Future<List<String>> writeWorkoutData({
     required HealthWorkoutActivityType activityType,
     required DateTime start,
     required DateTime end,
@@ -1542,7 +1575,8 @@ class Health {
       'title': title,
       'recordingMethod': recordingMethod.toInt(),
     };
-    return await _channel.invokeMethod('writeWorkoutData', args) == true;
+    // return await _channel.invokeMethod('writeWorkoutData', args) == true;
+    return _invokeStringListMethod('writeWorkoutData', args);
   }
 
   /// Start a new workout route recording session on iOS or Android.

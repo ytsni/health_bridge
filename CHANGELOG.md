@@ -1,3 +1,14 @@
+## 14.0.0
+
+* **BREAKING** The native implementations now returns list of strings (recordIDs) for writing health data. This also means now that the write method returns a list of recordIDs instead of a boolean
+* Android: Update `androidx.compose:compose-bom` to 2026.03.01
+* Android: Update `com.android.tools.build:gradle` to 8.13.2
+* Android: Update kotlin to 2.2.0
+* Gradle Daemon is now enabled by default, which should improve build times. You can disable it by adding `org.gradle.daemon=false` to your `gradle.properties` file. See [Gradle Daemon documentation](https://docs.gradle.org/current/userguide/gradle_daemon.html) for more information.
+* iOS: Enabled SPM support for iOS as part of Flutter migration to SPM [SPM for plugin authors](https://docs.flutter.dev/packages-and-plugins/swift-package-manager/for-app-developers) and CocoaPods Trunk becoming read-only [CocoaPods Trunk Read-Only Plan](https://blog.cocoapods.org/CocoaPods-Specs-Repo/)
+* iOS: Refactored the native HealthKit implementation into a modular Swift Package layout under `ios/health`, splitting the plugin into dedicated catalog, request parsing, serialization, routing, and feature-specific read/write services
+* iOS: Added native SwiftPM/XCTest coverage for catalog building, request parsing, authorization, interval reads, serialization, and write request decoding
+
 ## 13.3.1
 
 * iOS: Fix issues with app crashing on iOS 15

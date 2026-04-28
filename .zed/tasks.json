@@ -1,0 +1,55 @@
+[
+  {
+    "label": "Generate plugin *.g.dart",
+    "command": "fvm dart",
+    "args": [
+      "run",
+      "build_runner",
+      "build",
+      "--delete-conflicting-outputs"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "reveal": "always",
+    "hide": "never",
+    "save": "all"
+  },
+  {
+    "label": "Get example dependencies",
+    "command": "fvm flutter",
+    "args": [
+      "pub",
+      "get"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT/example",
+    "reveal": "always",
+    "hide": "never",
+    "save": "all"
+  },
+  {
+    "label": "Prepare Flutter plugin example",
+    "command": "zsh",
+    "args": [
+      "-lc",
+      "fvm flutter pub get && fvm dart run build_runner build --delete-conflicting-outputs && (cd example && fvm flutter pub get)"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "reveal": "always",
+    "hide": "never",
+    "save": "all"
+  },
+  {
+    "label": "Run Flutter example",
+    "command": "fvm flutter",
+    "args": [
+      "run"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT/example",
+    "allow_concurrent_runs": true,
+    "reveal": "always",
+    "hide": "never",
+    "save": "all",
+    "tags": [
+      "flutter-main"
+    ]
+  }
+]

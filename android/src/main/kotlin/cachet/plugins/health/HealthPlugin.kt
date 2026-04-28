@@ -20,6 +20,7 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import io.flutter.plugin.common.PluginRegistry.ActivityResultListener
 import kotlinx.coroutines.*
+import androidx.core.net.toUri
 
 /**
  * Main Flutter plugin class for Health Connect integration. Manages plugin lifecycle, method
@@ -266,7 +267,7 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
         context!!.startActivity(
                 Intent(Intent.ACTION_VIEW).apply {
                     setPackage("com.android.vending")
-                    data = android.net.Uri.parse(uriString)
+                    data = uriString.toUri()
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     putExtra("overlay", true)
                     putExtra("callerId", context!!.packageName)

@@ -70,10 +70,7 @@ class HealthAppState extends State<HealthApp> {
   bool _changesTokenExpired = false;
   bool _changesHasMore = false;
   final List<HealthChange> _changes = [];
-  final List<HealthDataType> _changeTypes = const [
-    HealthDataType.STEPS,
-    HealthDataType.WORKOUT,
-  ];
+  final List<HealthDataType> _changeTypes = const [HealthDataType.STEPS, HealthDataType.WORKOUT];
   final Map<String, HealthDataPoint> _syncedDataById = {};
   int _lastBeforeCount = 0;
   int _lastAfterCount = 0;
@@ -165,8 +162,7 @@ class HealthAppState extends State<HealthApp> {
   }
 
   /// Install Google Health Connect on this phone.
-  Future<void> installHealthConnect() async =>
-      await health.installHealthConnect();
+  Future<void> installHealthConnect() async => await health.installHealthConnect();
 
   /// Authorize, i.e. get permissions to access relevant health data.
   Future<void> authorize() async {
@@ -179,10 +175,7 @@ class HealthAppState extends State<HealthApp> {
     await Permission.location.request();
 
     // Check if we have health permissions
-    bool? hasPermissions = await health.hasPermissions(
-      types,
-      permissions: permissions,
-    );
+    bool? hasPermissions = await health.hasPermissions(types, permissions: permissions);
 
     // hasPermissions = false because the hasPermission cannot disclose if WRITE access exists.
     // Hence, we have to request with WRITE as well.
@@ -192,10 +185,7 @@ class HealthAppState extends State<HealthApp> {
     if (!hasPermissions) {
       // requesting access to the data types before reading them
       try {
-        authorized = await health.requestAuthorization(
-          types,
-          permissions: permissions,
-        );
+        authorized = await health.requestAuthorization(types, permissions: permissions);
 
         // request access to read historic data
         await health.requestHealthDataHistoryAuthorization();
@@ -207,11 +197,7 @@ class HealthAppState extends State<HealthApp> {
       }
     }
 
-    setState(
-      () => _state = (authorized)
-          ? AppState.AUTHORIZED
-          : AppState.AUTH_NOT_GRANTED,
-    );
+    setState(() => _state = (authorized) ? AppState.AUTHORIZED : AppState.AUTH_NOT_GRANTED);
   }
 
   /// Gets the Health Connect status on Android.
@@ -221,9 +207,7 @@ class HealthAppState extends State<HealthApp> {
     final status = await health.getHealthConnectSdkStatus();
 
     setState(() {
-      _contentHealthConnectStatus = Text(
-        'Health Connect Status: ${status?.name.toUpperCase()}',
-      );
+      _contentHealthConnectStatus = Text('Health Connect Status: ${status?.name.toUpperCase()}');
       _state = AppState.HEALTH_CONNECT_STATUS;
     });
   }
@@ -232,9 +216,7 @@ class HealthAppState extends State<HealthApp> {
   Future<void> getSkinTemperatureFeatureStatus() async {
     if (!Platform.isAndroid) {
       setState(() {
-        _contentSkinTemperatureFeatureStatus = const Text(
-          'Skin Temperature feature is Android only.',
-        );
+        _contentSkinTemperatureFeatureStatus = const Text('Skin Temperature feature is Android only.');
         _state = AppState.SKIN_TEMPERATURE_FEATURE_STATUS;
       });
       return;
@@ -242,9 +224,7 @@ class HealthAppState extends State<HealthApp> {
 
     final available = await health.isSkinTemperatureAvailable();
     setState(() {
-      _contentSkinTemperatureFeatureStatus = Text(
-        'Skin Temperature Feature: ${available ? "AVAILABLE" : "NOT AVAILABLE"}',
-      );
+      _contentSkinTemperatureFeatureStatus = Text('Skin Temperature Feature: ${available ? "AVAILABLE" : "NOT AVAILABLE"}');
       _state = AppState.SKIN_TEMPERATURE_FEATURE_STATUS;
     });
   }
@@ -388,9 +368,7 @@ class HealthAppState extends State<HealthApp> {
       healthData.sort((a, b) => b.dateTo.compareTo(a.dateTo));
 
       // save all the new data points (only the first 100)
-      _healthDataList.addAll(
-        (healthData.length < 100) ? healthData : healthData.sublist(0, 100),
-      );
+      _healthDataList.addAll((healthData.length < 100) ? healthData : healthData.sublist(0, 100));
     } catch (error) {
       debugPrint("Exception in getHealthDataFromTypes: $error");
     }
@@ -409,17 +387,10 @@ class HealthAppState extends State<HealthApp> {
   }
 
   /// Fetch single data point by UUID and type.
-  Future<void> fetchDataByUUID(
-    BuildContext context, {
-    required String uuid,
-    required HealthDataType type,
-  }) async {
+  Future<void> fetchDataByUUID(BuildContext context, {required String uuid, required HealthDataType type}) async {
     try {
       // fetch health data
-      HealthDataPoint? healthPoint = await health.getHealthDataByUUID(
-        uuid: uuid,
-        type: type,
-      );
+      HealthDataPoint? healthPoint = await health.getHealthDataByUUID(uuid: uuid, type: type);
 
       if (healthPoint != null) {
         // save all the new data points (only the first 100)
@@ -428,6 +399,12 @@ class HealthAppState extends State<HealthApp> {
     } catch (error) {
       debugPrint("Exception in getHealthDataByUUID: $error");
     }
+  }
+
+  Future<bool> _writeSucceeded(Future<List<String>> operation) async {
+    final recordIds = await operation;
+    debugPrint('Write operation returned record IDs: $recordIds');
+    return recordIds.isNotEmpty;
   }
 
   /// Add some random health data.
@@ -444,181 +421,153 @@ class HealthAppState extends State<HealthApp> {
     bool success = true;
 
     // misc. health data examples using the writeHealthData() method
-    success &= await health.writeHealthData(
-      value: 1.925,
-      type: HealthDataType.HEIGHT,
-      startTime: earlier,
-      endTime: now,
-      recordingMethod: RecordingMethod.manual,
+    success &= await _writeSucceeded(
+      health.writeHealthData(
+        value: 1.925,
+        type: HealthDataType.HEIGHT,
+        startTime: earlier,
+        endTime: now,
+        recordingMethod: RecordingMethod.manual,
+      ),
     );
-    success &= await health.writeHealthData(
-      value: 90,
-      type: HealthDataType.WEIGHT,
-      startTime: now,
-      recordingMethod: RecordingMethod.manual,
+    success &= await _writeSucceeded(
+      health.writeHealthData(value: 90, type: HealthDataType.WEIGHT, startTime: now, recordingMethod: RecordingMethod.manual),
     );
-    success &= await health.writeHealthData(
-      value: 90,
-      type: HealthDataType.HEART_RATE,
-      startTime: earlier,
-      endTime: now,
-      recordingMethod: RecordingMethod.manual,
+    success &= await _writeSucceeded(
+      health.writeHealthData(
+        value: 90,
+        type: HealthDataType.HEART_RATE,
+        startTime: earlier,
+        endTime: now,
+        recordingMethod: RecordingMethod.manual,
+      ),
     );
-    success &= await health.writeHealthData(
-      value: 90,
-      type: HealthDataType.STEPS,
-      startTime: earlier,
-      endTime: now,
-      recordingMethod: RecordingMethod.manual,
+    success &= await _writeSucceeded(
+      health.writeHealthData(
+        value: 90,
+        type: HealthDataType.STEPS,
+        startTime: earlier,
+        endTime: now,
+        recordingMethod: RecordingMethod.manual,
+      ),
     );
-    success &= await health.writeHealthData(
-      value: 200,
-      type: HealthDataType.ACTIVE_ENERGY_BURNED,
-      startTime: earlier,
-      endTime: now,
-      clientRecordId: "uniqueID1234",
-      clientRecordVersion: 1,
+    success &= await _writeSucceeded(
+      health.writeHealthData(
+        value: 200,
+        type: HealthDataType.ACTIVE_ENERGY_BURNED,
+        startTime: earlier,
+        endTime: now,
+        clientRecordId: "uniqueID1234",
+        clientRecordVersion: 1,
+      ),
     );
-    success &= await health.writeHealthData(
-      value: 70,
-      type: HealthDataType.HEART_RATE,
-      startTime: earlier,
-      endTime: now,
+    success &= await _writeSucceeded(health.writeHealthData(value: 70, type: HealthDataType.HEART_RATE, startTime: earlier, endTime: now));
+    success &= await _writeSucceeded(
+      health.writeHealthData(value: 37, type: HealthDataType.BODY_TEMPERATURE, startTime: earlier, endTime: now),
     );
-    success &= await health.writeHealthData(
-      value: 37,
-      type: HealthDataType.BODY_TEMPERATURE,
-      startTime: earlier,
-      endTime: now,
+    success &= await _writeSucceeded(
+      health.writeHealthData(value: 105, type: HealthDataType.BLOOD_GLUCOSE, startTime: earlier, endTime: now),
     );
-    success &= await health.writeHealthData(
-      value: 105,
-      type: HealthDataType.BLOOD_GLUCOSE,
-      startTime: earlier,
-      endTime: now,
-    );
-    success &= await health.writeHealthData(
-      value: 1.8,
-      type: HealthDataType.WATER,
-      startTime: earlier,
-      endTime: now,
-    );
+    success &= await _writeSucceeded(health.writeHealthData(value: 1.8, type: HealthDataType.WATER, startTime: earlier, endTime: now));
 
     // different types of sleep
-    success &= await health.writeHealthData(
-      value: 0.0,
-      type: HealthDataType.SLEEP_ASLEEP,
-      startTime: earlier,
-      endTime: now,
+    success &= await _writeSucceeded(
+      health.writeHealthData(value: 0.0, type: HealthDataType.SLEEP_ASLEEP, startTime: earlier, endTime: now),
     );
-    success &= await health.writeHealthData(
-      value: 0.0,
-      type: HealthDataType.SLEEP_AWAKE,
-      startTime: earlier,
-      endTime: now,
+    success &= await _writeSucceeded(
+      health.writeHealthData(value: 0.0, type: HealthDataType.SLEEP_AWAKE, startTime: earlier, endTime: now),
     );
     if (_isIOS16OrNewer || Platform.isAndroid) {
-      success &= await health.writeHealthData(
-        value: 0.0,
-        type: HealthDataType.SLEEP_REM,
-        startTime: earlier,
-        endTime: now,
+      success &= await _writeSucceeded(
+        health.writeHealthData(value: 0.0, type: HealthDataType.SLEEP_REM, startTime: earlier, endTime: now),
       );
-      success &= await health.writeHealthData(
-        value: 0.0,
-        type: HealthDataType.SLEEP_DEEP,
-        startTime: earlier,
-        endTime: now,
+      success &= await _writeSucceeded(
+        health.writeHealthData(value: 0.0, type: HealthDataType.SLEEP_DEEP, startTime: earlier, endTime: now),
       );
     } else if (Platform.isIOS) {
       debugPrint('Skipping SLEEP_REM and SLEEP_DEEP writes on iOS < 16.');
     }
-    success &= await health.writeHealthData(
-      value: 22,
-      type: HealthDataType.LEAN_BODY_MASS,
-      startTime: earlier,
-      endTime: now,
+    success &= await _writeSucceeded(
+      health.writeHealthData(value: 22, type: HealthDataType.LEAN_BODY_MASS, startTime: earlier, endTime: now),
     );
 
     if (Platform.isAndroid) {
-      success &= await health.writeActivityIntensity(
-        intensityLevel: ActivityIntensityLevel.moderate,
-        startTime: earlier,
-        endTime: now,
-        recordingMethod: RecordingMethod.manual,
+      success &= await _writeSucceeded(
+        health.writeActivityIntensity(
+          intensityLevel: ActivityIntensityLevel.moderate,
+          startTime: earlier,
+          endTime: now,
+          recordingMethod: RecordingMethod.manual,
+        ),
       );
     }
 
     // specialized write methods
-    success &= await health.writeBloodOxygen(
-      saturation: 98,
-      startTime: earlier,
-      endTime: now,
+    success &= await _writeSucceeded(health.writeBloodOxygen(saturation: 98, startTime: earlier, endTime: now));
+    success &= await _writeSucceeded(
+      health.writeWorkoutData(
+        activityType: HealthWorkoutActivityType.AMERICAN_FOOTBALL,
+        title: "Random workout name that shows up in Health Connect",
+        start: now.subtract(const Duration(minutes: 15)),
+        end: now,
+        totalDistance: 2430,
+        totalEnergyBurned: 400,
+      ),
     );
-    success &= await health.writeWorkoutData(
-      activityType: HealthWorkoutActivityType.AMERICAN_FOOTBALL,
-      title: "Random workout name that shows up in Health Connect",
-      start: now.subtract(const Duration(minutes: 15)),
-      end: now,
-      totalDistance: 2430,
-      totalEnergyBurned: 400,
+    success &= await _writeSucceeded(
+      health.writeBloodPressure(systolic: 90, diastolic: 80, startTime: now, clientRecordId: "uniqueID1234", clientRecordVersion: 2),
     );
-    success &= await health.writeBloodPressure(
-      systolic: 90,
-      diastolic: 80,
-      startTime: now,
-      clientRecordId: "uniqueID1234",
-      clientRecordVersion: 2,
-    );
-    success &= await health.writeMeal(
-      mealType: MealType.SNACK,
-      clientRecordId: "uniqueID1234",
-      clientRecordVersion: 1.4,
-      startTime: earlier,
-      endTime: now,
-      caloriesConsumed: 1000,
-      carbohydrates: 50,
-      protein: 25,
-      fatTotal: 50,
-      name: "Banana",
-      caffeine: 0.002,
-      vitaminA: 0.001,
-      vitaminC: 0.002,
-      vitaminD: 0.003,
-      vitaminE: 0.004,
-      vitaminK: 0.005,
-      b1Thiamin: 0.006,
-      b2Riboflavin: 0.007,
-      b3Niacin: 0.008,
-      b5PantothenicAcid: 0.009,
-      b6Pyridoxine: 0.010,
-      b7Biotin: 0.011,
-      b9Folate: 0.012,
-      b12Cobalamin: 0.013,
-      calcium: 0.015,
-      copper: 0.016,
-      iodine: 0.017,
-      iron: 0.018,
-      magnesium: 0.019,
-      manganese: 0.020,
-      phosphorus: 0.021,
-      potassium: 0.022,
-      selenium: 0.023,
-      sodium: 0.024,
-      zinc: 0.025,
-      water: 0.026,
-      molybdenum: 0.027,
-      chloride: 0.028,
-      chromium: 0.029,
-      cholesterol: 0.030,
-      fiber: 0.031,
-      fatMonounsaturated: 0.032,
-      fatPolyunsaturated: 0.033,
-      fatUnsaturated: 0.065,
-      fatTransMonoenoic: 0.65,
-      fatSaturated: 066,
-      sugar: 0.067,
-      recordingMethod: RecordingMethod.manual,
+    success &= await _writeSucceeded(
+      health.writeMeal(
+        mealType: MealType.SNACK,
+        clientRecordId: "uniqueID1234",
+        clientRecordVersion: 1.4,
+        startTime: earlier,
+        endTime: now,
+        caloriesConsumed: 1000,
+        carbohydrates: 50,
+        protein: 25,
+        fatTotal: 50,
+        name: "Banana",
+        caffeine: 0.002,
+        vitaminA: 0.001,
+        vitaminC: 0.002,
+        vitaminD: 0.003,
+        vitaminE: 0.004,
+        vitaminK: 0.005,
+        b1Thiamin: 0.006,
+        b2Riboflavin: 0.007,
+        b3Niacin: 0.008,
+        b5PantothenicAcid: 0.009,
+        b6Pyridoxine: 0.010,
+        b7Biotin: 0.011,
+        b9Folate: 0.012,
+        b12Cobalamin: 0.013,
+        calcium: 0.015,
+        copper: 0.016,
+        iodine: 0.017,
+        iron: 0.018,
+        magnesium: 0.019,
+        manganese: 0.020,
+        phosphorus: 0.021,
+        potassium: 0.022,
+        selenium: 0.023,
+        sodium: 0.024,
+        zinc: 0.025,
+        water: 0.026,
+        molybdenum: 0.027,
+        chloride: 0.028,
+        chromium: 0.029,
+        cholesterol: 0.030,
+        fiber: 0.031,
+        fatMonounsaturated: 0.032,
+        fatPolyunsaturated: 0.033,
+        fatUnsaturated: 0.065,
+        fatTransMonoenoic: 0.65,
+        fatSaturated: 066,
+        sugar: 0.067,
+        recordingMethod: RecordingMethod.manual,
+      ),
     );
 
     // Store an Audiogram - only available on iOS
@@ -637,89 +586,83 @@ class HealthAppState extends State<HealthApp> {
     //   },
     // );
 
-    success &= await health.writeMenstruationFlow(
-      flow: MenstrualFlow.medium,
-      isStartOfCycle: true,
-      startTime: earlier,
-      endTime: now,
-    );
+    success &= await health.writeMenstruationFlow(flow: MenstrualFlow.medium, isStartOfCycle: true, startTime: earlier, endTime: now);
 
     writeSkinTemperatureSample();
 
     if (Platform.isIOS) {
-      success &= await health.writeInsulinDelivery(
-        5,
-        InsulinDeliveryReason.BOLUS,
-        earlier,
-        now,
+      success &= await _writeSucceeded(health.writeInsulinDelivery(5, InsulinDeliveryReason.BOLUS, earlier, now));
+      success &= await _writeSucceeded(
+        health.writeHealthData(value: 30, type: HealthDataType.HEART_RATE_VARIABILITY_SDNN, startTime: earlier, endTime: now),
       );
-      success &= await health.writeHealthData(
-        value: 30,
-        type: HealthDataType.HEART_RATE_VARIABILITY_SDNN,
-        startTime: earlier,
-        endTime: now,
-      );
-      success &= await health.writeHealthData(
-        value: 1.5, // 1.5 m/s (typical walking speed)
-        type: HealthDataType.WALKING_SPEED,
-        startTime: earlier,
-        endTime: now,
-        recordingMethod: RecordingMethod.manual,
+      success &= await _writeSucceeded(
+        health.writeHealthData(
+          value: 1.5, // 1.5 m/s (typical walking speed)
+          type: HealthDataType.WALKING_SPEED,
+          startTime: earlier,
+          endTime: now,
+          recordingMethod: RecordingMethod.manual,
+        ),
       );
     } else {
-      success &= await health.writeHealthData(
-        value: 2.0, // 2.0 m/s (typical jogging speed)
-        type: HealthDataType.SPEED,
-        startTime: earlier,
-        endTime: now,
-        recordingMethod: RecordingMethod.manual,
+      success &= await _writeSucceeded(
+        health.writeHealthData(
+          value: 2.0, // 2.0 m/s (typical jogging speed)
+          type: HealthDataType.SPEED,
+          startTime: earlier,
+          endTime: now,
+          recordingMethod: RecordingMethod.manual,
+        ),
       );
-      success &= await health.writeHealthData(
-        value: 30,
-        type: HealthDataType.HEART_RATE_VARIABILITY_RMSSD,
-        startTime: earlier,
-        endTime: now,
+      success &= await _writeSucceeded(
+        health.writeHealthData(value: 30, type: HealthDataType.HEART_RATE_VARIABILITY_RMSSD, startTime: earlier, endTime: now),
       );
     }
 
     // Available on iOS 16.0+ only
     if (_isIOS16OrNewer) {
-      success &= await health.writeHealthData(
-        value: 22,
-        type: HealthDataType.WATER_TEMPERATURE,
-        startTime: earlier,
-        endTime: now,
-        recordingMethod: RecordingMethod.manual,
+      success &= await _writeSucceeded(
+        health.writeHealthData(
+          value: 22,
+          type: HealthDataType.WATER_TEMPERATURE,
+          startTime: earlier,
+          endTime: now,
+          recordingMethod: RecordingMethod.manual,
+        ),
       );
 
-      success &= await health.writeHealthData(
-        value: 55,
-        type: HealthDataType.UNDERWATER_DEPTH,
-        startTime: earlier,
-        endTime: now,
-        recordingMethod: RecordingMethod.manual,
+      success &= await _writeSucceeded(
+        health.writeHealthData(
+          value: 55,
+          type: HealthDataType.UNDERWATER_DEPTH,
+          startTime: earlier,
+          endTime: now,
+          recordingMethod: RecordingMethod.manual,
+        ),
       );
-      success &= await health.writeHealthData(
-        value: 4.3,
-        type: HealthDataType.UV_INDEX,
-        startTime: earlier,
-        endTime: now,
-        recordingMethod: RecordingMethod.manual,
+      success &= await _writeSucceeded(
+        health.writeHealthData(
+          value: 4.3,
+          type: HealthDataType.UV_INDEX,
+          startTime: earlier,
+          endTime: now,
+          recordingMethod: RecordingMethod.manual,
+        ),
       );
     } else if (Platform.isIOS) {
-      debugPrint(
-        'Skipping WATER_TEMPERATURE, UNDERWATER_DEPTH, and UV_INDEX writes on iOS < 16.',
-      );
+      debugPrint('Skipping WATER_TEMPERATURE, UNDERWATER_DEPTH, and UV_INDEX writes on iOS < 16.');
     }
 
     if (Platform.isIOS) {
       // Mindfulness value should be counted based on start and end time
-      success &= await health.writeHealthData(
-        value: 10,
-        type: HealthDataType.MINDFULNESS,
-        startTime: earlier,
-        endTime: now,
-        recordingMethod: RecordingMethod.automatic,
+      success &= await _writeSucceeded(
+        health.writeHealthData(
+          value: 10,
+          type: HealthDataType.MINDFULNESS,
+          startTime: earlier,
+          endTime: now,
+          recordingMethod: RecordingMethod.automatic,
+        ),
       );
     }
 
@@ -728,32 +671,22 @@ class HealthAppState extends State<HealthApp> {
     });
   }
 
-  Future<bool> _ensureSkinTemperaturePermissions({
-    required HealthDataAccess access,
-  }) async {
+  Future<bool> _ensureSkinTemperaturePermissions({required HealthDataAccess access}) async {
     if (!Platform.isAndroid) return false;
 
     final available = await health.isSkinTemperatureAvailable();
     if (!available) {
       setState(() {
-        _contentSkinTemperatureFeatureStatus = const Text(
-          'Skin Temperature Feature: NOT AVAILABLE',
-        );
+        _contentSkinTemperatureFeatureStatus = const Text('Skin Temperature Feature: NOT AVAILABLE');
         _state = AppState.SKIN_TEMPERATURE_FEATURE_STATUS;
       });
       return false;
     }
 
-    bool? hasPermissions = await health.hasPermissions(
-      [HealthDataType.SKIN_TEMPERATURE],
-      permissions: [access],
-    );
+    bool? hasPermissions = await health.hasPermissions([HealthDataType.SKIN_TEMPERATURE], permissions: [access]);
 
     if (hasPermissions != true) {
-      hasPermissions = await health.requestAuthorization(
-        [HealthDataType.SKIN_TEMPERATURE],
-        permissions: [access],
-      );
+      hasPermissions = await health.requestAuthorization([HealthDataType.SKIN_TEMPERATURE], permissions: [access]);
     }
 
     return hasPermissions == true;
@@ -766,9 +699,7 @@ class HealthAppState extends State<HealthApp> {
       return;
     }
 
-    final authorized = await _ensureSkinTemperaturePermissions(
-      access: HealthDataAccess.READ_WRITE,
-    );
+    final authorized = await _ensureSkinTemperaturePermissions(access: HealthDataAccess.READ_WRITE);
     if (!authorized) {
       setState(() => _state = AppState.DATA_NOT_ADDED);
       return;
@@ -783,7 +714,6 @@ class HealthAppState extends State<HealthApp> {
       endTime: now,
       recordingMethod: RecordingMethod.manual,
     );
-
   }
 
   /// Writes a sample workout route and associates it with a workout.
@@ -793,11 +723,8 @@ class HealthAppState extends State<HealthApp> {
       return;
     }
 
-    if (Platform.isAndroid &&
-        health.healthConnectSdkStatus != HealthConnectSdkStatus.sdkAvailable) {
-      debugPrint(
-        'Workout routes on Android require Health Connect to be available.',
-      );
+    if (Platform.isAndroid && health.healthConnectSdkStatus != HealthConnectSdkStatus.sdkAvailable) {
+      debugPrint('Workout routes on Android require Health Connect to be available.');
       return;
     }
 
@@ -852,15 +779,9 @@ class HealthAppState extends State<HealthApp> {
       }
 
       final workoutPoint = workouts.first;
-      final routeLocations = _buildSampleWorkoutRoute(
-        workoutPoint.dateFrom,
-        workoutPoint.dateTo,
-      );
+      final routeLocations = _buildSampleWorkoutRoute(workoutPoint.dateFrom, workoutPoint.dateTo);
 
-      await health.insertWorkoutRouteData(
-        builderId: builderId,
-        locations: routeLocations,
-      );
+      await health.insertWorkoutRouteData(builderId: builderId, locations: routeLocations);
 
       final routeUuid = await health.finishWorkoutRoute(
         builderId: builderId,
@@ -868,9 +789,7 @@ class HealthAppState extends State<HealthApp> {
         metadata: const {'sample_source': 'health_example_app'},
       );
 
-      debugPrint(
-        'Created workout route $routeUuid for workout ${workoutPoint.uuid}.',
-      );
+      debugPrint('Created workout route $routeUuid for workout ${workoutPoint.uuid}.');
 
       await fetchData();
     } catch (error) {
@@ -888,10 +807,7 @@ class HealthAppState extends State<HealthApp> {
     }
   }
 
-  List<WorkoutRouteLocation> _buildSampleWorkoutRoute(
-    DateTime start,
-    DateTime end,
-  ) {
+  List<WorkoutRouteLocation> _buildSampleWorkoutRoute(DateTime start, DateTime end) {
     final clampedEnd = end.subtract(const Duration(seconds: 1));
     if (!clampedEnd.isAfter(start)) {
       throw ArgumentError('Workout end time must be after start time.');
@@ -905,9 +821,7 @@ class HealthAppState extends State<HealthApp> {
       [37.335780, -122.008000],
     ];
 
-    final intervalMillis =
-        (clampedEnd.millisecondsSinceEpoch - start.millisecondsSinceEpoch) ~/
-        (coordinates.length + 1);
+    final intervalMillis = (clampedEnd.millisecondsSinceEpoch - start.millisecondsSinceEpoch) ~/ (coordinates.length + 1);
     final interval = Duration(milliseconds: intervalMillis.clamp(1, 600000));
 
     return List<WorkoutRouteLocation>.generate(coordinates.length, (index) {
@@ -936,11 +850,7 @@ class HealthAppState extends State<HealthApp> {
 
     bool success = true;
     for (HealthDataType type in types) {
-      success &= await health.delete(
-        type: type,
-        startTime: earlier,
-        endTime: now,
-      );
+      success &= await health.delete(type: type, startTime: earlier, endTime: now);
     }
 
     // To delete a record by UUID - call the `health.deleteByUUID` method:
@@ -950,16 +860,16 @@ class HealthAppState extends State<HealthApp> {
         startTime: startDate,
         endTime: endDate,
       );
-      
+
       if (healthData.isNotEmpty) {
         print("DELETING: ${healthData.first.toJson()}");
         String uuid = healthData.first.uuid;
-        
+
         success &= await health.deleteByUUID(
           type: HealthDataType.STEPS,
           uuid: uuid,
         );
-        
+
       }
      */
 
@@ -976,12 +886,9 @@ class HealthAppState extends State<HealthApp> {
     final now = DateTime.now();
     final midnight = DateTime(now.year, now.month, now.day);
 
-    bool stepsPermission =
-        await health.hasPermissions([HealthDataType.STEPS]) ?? false;
+    bool stepsPermission = await health.hasPermissions([HealthDataType.STEPS]) ?? false;
     if (!stepsPermission) {
-      stepsPermission = await health.requestAuthorization([
-        HealthDataType.STEPS,
-      ]);
+      stepsPermission = await health.requestAuthorization([HealthDataType.STEPS]);
     }
 
     if (stepsPermission) {
@@ -989,9 +896,7 @@ class HealthAppState extends State<HealthApp> {
         steps = await health.getTotalStepsInInterval(
           midnight,
           now,
-          includeManualEntry: !recordingMethodsToFilter.contains(
-            RecordingMethod.manual,
-          ),
+          includeManualEntry: !recordingMethodsToFilter.contains(RecordingMethod.manual),
         );
       } catch (error) {
         debugPrint("Exception in getTotalStepsInInterval: $error");
@@ -1023,9 +928,7 @@ class HealthAppState extends State<HealthApp> {
     }
 
     setState(() {
-      _state = success
-          ? AppState.PERMISSIONS_REVOKED
-          : AppState.PERMISSIONS_NOT_REVOKED;
+      _state = success ? AppState.PERMISSIONS_REVOKED : AppState.PERMISSIONS_NOT_REVOKED;
     });
   }
 
@@ -1033,14 +936,13 @@ class HealthAppState extends State<HealthApp> {
     final startDate = DateTime.now().subtract(const Duration(days: 7));
     final endDate = DateTime.now();
 
-    List<HealthDataPoint> healthDataResponse = await health
-        .getHealthIntervalDataFromTypes(
-          startDate: startDate,
-          endDate: endDate,
-          types: [HealthDataType.BLOOD_OXYGEN, HealthDataType.STEPS],
-          interval: 86400, // 86400 seconds = 1 day
-          // recordingMethodsToFilter: recordingMethodsToFilter,
-        );
+    List<HealthDataPoint> healthDataResponse = await health.getHealthIntervalDataFromTypes(
+      startDate: startDate,
+      endDate: endDate,
+      types: [HealthDataType.BLOOD_OXYGEN, HealthDataType.STEPS],
+      interval: 86400, // 86400 seconds = 1 day
+      // recordingMethodsToFilter: recordingMethodsToFilter,
+    );
     debugPrint(
       'Total number of interval data points: ${healthDataResponse.length}. '
       '${healthDataResponse.length > 100 ? 'Only showing the first 100.' : ''}',
@@ -1053,11 +955,7 @@ class HealthAppState extends State<HealthApp> {
     healthDataResponse.sort((a, b) => b.dateTo.compareTo(a.dateTo));
 
     _healthDataList.clear();
-    _healthDataList.addAll(
-      (healthDataResponse.length < 100)
-          ? healthDataResponse
-          : healthDataResponse.sublist(0, 100),
-    );
+    _healthDataList.addAll((healthDataResponse.length < 100) ? healthDataResponse : healthDataResponse.sublist(0, 100));
 
     for (var data in _healthDataList) {
       debugPrint(toJsonString(data));
@@ -1069,18 +967,12 @@ class HealthAppState extends State<HealthApp> {
   }
 
   /// Display bottom sheet dialog of selected HealthDataPoint
-  void openDetailBottomSheet(
-    BuildContext context,
-    HealthDataPoint? healthPoint,
-  ) {
+  void openDetailBottomSheet(BuildContext context, HealthDataPoint? healthPoint) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (BuildContext context) =>
-          _detailedBottomSheet(healthPoint: healthPoint),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (BuildContext context) => _detailedBottomSheet(healthPoint: healthPoint),
     );
   }
 
@@ -1099,153 +991,77 @@ class HealthAppState extends State<HealthApp> {
                 if (Platform.isAndroid)
                   TextButton(
                     onPressed: getHealthConnectSdkStatus,
-                    style: const ButtonStyle(
-                      backgroundColor: WidgetStatePropertyAll(Colors.blue),
-                    ),
-                    child: const Text(
-                      "Check Health Connect Status",
-                      style: TextStyle(color: Colors.white),
-                    ),
+                    style: const ButtonStyle(backgroundColor: WidgetStatePropertyAll(Colors.blue)),
+                    child: const Text("Check Health Connect Status", style: TextStyle(color: Colors.white)),
                   ),
-                if (Platform.isAndroid &&
-                    health.healthConnectSdkStatus !=
-                        HealthConnectSdkStatus.sdkAvailable)
+                if (Platform.isAndroid && health.healthConnectSdkStatus != HealthConnectSdkStatus.sdkAvailable)
                   TextButton(
                     onPressed: installHealthConnect,
-                    style: const ButtonStyle(
-                      backgroundColor: WidgetStatePropertyAll(Colors.blue),
-                    ),
-                    child: const Text(
-                      "Install Health Connect",
-                      style: TextStyle(color: Colors.white),
-                    ),
+                    style: const ButtonStyle(backgroundColor: WidgetStatePropertyAll(Colors.blue)),
+                    child: const Text("Install Health Connect", style: TextStyle(color: Colors.white)),
                   ),
-                if (Platform.isIOS ||
-                    Platform.isAndroid &&
-                        health.healthConnectSdkStatus ==
-                            HealthConnectSdkStatus.sdkAvailable)
+                if (Platform.isIOS || Platform.isAndroid && health.healthConnectSdkStatus == HealthConnectSdkStatus.sdkAvailable)
                   Wrap(
                     spacing: 10,
                     children: [
                       TextButton(
                         onPressed: authorize,
-                        style: const ButtonStyle(
-                          backgroundColor: WidgetStatePropertyAll(Colors.blue),
-                        ),
-                        child: const Text(
-                          "Authenticate",
-                          style: TextStyle(color: Colors.white),
-                        ),
+                        style: const ButtonStyle(backgroundColor: WidgetStatePropertyAll(Colors.blue)),
+                        child: const Text("Authenticate", style: TextStyle(color: Colors.white)),
                       ),
                       if (Platform.isAndroid)
                         TextButton(
                           onPressed: getSkinTemperatureFeatureStatus,
-                          style: const ButtonStyle(
-                            backgroundColor: WidgetStatePropertyAll(Colors.blue),
-                          ),
-                          child: const Text(
-                            "Check Skin Temp Feature",
-                            style: TextStyle(color: Colors.white),
-                          ),
+                          style: const ButtonStyle(backgroundColor: WidgetStatePropertyAll(Colors.blue)),
+                          child: const Text("Check Skin Temp Feature", style: TextStyle(color: Colors.white)),
                         ),
                       TextButton(
                         onPressed: fetchData,
-                        style: const ButtonStyle(
-                          backgroundColor: WidgetStatePropertyAll(Colors.blue),
-                        ),
-                        child: const Text(
-                          "Fetch Data",
-                          style: TextStyle(color: Colors.white),
-                        ),
+                        style: const ButtonStyle(backgroundColor: WidgetStatePropertyAll(Colors.blue)),
+                        child: const Text("Fetch Data", style: TextStyle(color: Colors.white)),
                       ),
                       if (Platform.isAndroid)
                         TextButton(
                           onPressed: createChangesToken,
-                          style: const ButtonStyle(
-                            backgroundColor: WidgetStatePropertyAll(
-                              Colors.blue,
-                            ),
-                          ),
-                          child: const Text(
-                            "Create Changes Token",
-                            style: TextStyle(color: Colors.white),
-                          ),
+                          style: const ButtonStyle(backgroundColor: WidgetStatePropertyAll(Colors.blue)),
+                          child: const Text("Create Changes Token", style: TextStyle(color: Colors.white)),
                         ),
                       if (Platform.isAndroid)
                         TextButton(
                           onPressed: fetchChanges,
-                          style: const ButtonStyle(
-                            backgroundColor: WidgetStatePropertyAll(
-                              Colors.blue,
-                            ),
-                          ),
-                          child: const Text(
-                            "Get Changes",
-                            style: TextStyle(color: Colors.white),
-                          ),
+                          style: const ButtonStyle(backgroundColor: WidgetStatePropertyAll(Colors.blue)),
+                          child: const Text("Get Changes", style: TextStyle(color: Colors.white)),
                         ),
                       TextButton(
                         onPressed: addData,
-                        style: const ButtonStyle(
-                          backgroundColor: WidgetStatePropertyAll(Colors.blue),
-                        ),
-                        child: const Text(
-                          "Add Data",
-                          style: TextStyle(color: Colors.white),
-                        ),
+                        style: const ButtonStyle(backgroundColor: WidgetStatePropertyAll(Colors.blue)),
+                        child: const Text("Add Data", style: TextStyle(color: Colors.white)),
                       ),
                       if (Platform.isIOS || Platform.isAndroid)
                         TextButton(
                           onPressed: writeWorkoutRoute,
-                          style: const ButtonStyle(
-                            backgroundColor: WidgetStatePropertyAll(
-                              Colors.blue,
-                            ),
-                          ),
-                          child: const Text(
-                            "Write Workout Route",
-                            style: TextStyle(color: Colors.white),
-                          ),
+                          style: const ButtonStyle(backgroundColor: WidgetStatePropertyAll(Colors.blue)),
+                          child: const Text("Write Workout Route", style: TextStyle(color: Colors.white)),
                         ),
                       TextButton(
                         onPressed: deleteData,
-                        style: const ButtonStyle(
-                          backgroundColor: WidgetStatePropertyAll(Colors.blue),
-                        ),
-                        child: const Text(
-                          "Delete Data",
-                          style: TextStyle(color: Colors.white),
-                        ),
+                        style: const ButtonStyle(backgroundColor: WidgetStatePropertyAll(Colors.blue)),
+                        child: const Text("Delete Data", style: TextStyle(color: Colors.white)),
                       ),
                       TextButton(
                         onPressed: fetchStepData,
-                        style: const ButtonStyle(
-                          backgroundColor: WidgetStatePropertyAll(Colors.blue),
-                        ),
-                        child: const Text(
-                          "Fetch Step Data",
-                          style: TextStyle(color: Colors.white),
-                        ),
+                        style: const ButtonStyle(backgroundColor: WidgetStatePropertyAll(Colors.blue)),
+                        child: const Text("Fetch Step Data", style: TextStyle(color: Colors.white)),
                       ),
                       TextButton(
                         onPressed: revokeAccess,
-                        style: const ButtonStyle(
-                          backgroundColor: WidgetStatePropertyAll(Colors.blue),
-                        ),
-                        child: const Text(
-                          "Revoke Access",
-                          style: TextStyle(color: Colors.white),
-                        ),
+                        style: const ButtonStyle(backgroundColor: WidgetStatePropertyAll(Colors.blue)),
+                        child: const Text("Revoke Access", style: TextStyle(color: Colors.white)),
                       ),
                       TextButton(
                         onPressed: getIntervalBasedData,
-                        style: const ButtonStyle(
-                          backgroundColor: WidgetStatePropertyAll(Colors.blue),
-                        ),
-                        child: const Text(
-                          'Get Interval Data (7 days)',
-                          style: TextStyle(color: Colors.white),
-                        ),
+                        style: const ButtonStyle(backgroundColor: WidgetStatePropertyAll(Colors.blue)),
+                        child: const Text('Get Interval Data (7 days)', style: TextStyle(color: Colors.white)),
                       ),
                     ],
                   ),
@@ -1267,19 +1083,12 @@ class HealthAppState extends State<HealthApp> {
         children: [
           for (final method
               in Platform.isAndroid
-                  ? [
-                      RecordingMethod.manual,
-                      RecordingMethod.automatic,
-                      RecordingMethod.active,
-                      RecordingMethod.unknown,
-                    ]
+                  ? [RecordingMethod.manual, RecordingMethod.automatic, RecordingMethod.active, RecordingMethod.unknown]
                   : [RecordingMethod.automatic, RecordingMethod.manual])
             SizedBox(
               width: 150,
               child: CheckboxListTile(
-                title: Text(
-                  '${method.name[0].toUpperCase()}${method.name.substring(1)} entries',
-                ),
+                title: Text('${method.name[0].toUpperCase()}${method.name.substring(1)} entries'),
                 value: !recordingMethodsToFilter.contains(method),
                 onChanged: (value) {
                   setState(() {
@@ -1311,9 +1120,7 @@ class HealthAppState extends State<HealthApp> {
             SizedBox(
               width: 150,
               child: CheckboxListTile(
-                title: Text(
-                  '${method.name[0].toUpperCase()}${method.name.substring(1)} entries',
-                ),
+                title: Text('${method.name[0].toUpperCase()}${method.name.substring(1)} entries'),
                 value: !recordingMethodsToFilter.contains(method),
                 onChanged: (value) {
                   setState(() {
@@ -1340,26 +1147,19 @@ class HealthAppState extends State<HealthApp> {
   Widget get _permissionsRevoking => Column(
     mainAxisAlignment: MainAxisAlignment.center,
     children: <Widget>[
-      Container(
-        padding: const EdgeInsets.all(20),
-        child: const CircularProgressIndicator(strokeWidth: 10),
-      ),
+      Container(padding: const EdgeInsets.all(20), child: const CircularProgressIndicator(strokeWidth: 10)),
       const Text('Revoking permissions...'),
     ],
   );
 
   Widget get _permissionsRevoked => const Text('Permissions revoked.');
 
-  Widget get _permissionsNotRevoked =>
-      const Text('Failed to revoke permissions');
+  Widget get _permissionsNotRevoked => const Text('Failed to revoke permissions');
 
   Widget get _contentFetchingData => Column(
     mainAxisAlignment: MainAxisAlignment.center,
     children: <Widget>[
-      Container(
-        padding: const EdgeInsets.all(20),
-        child: const CircularProgressIndicator(strokeWidth: 10),
-      ),
+      Container(padding: const EdgeInsets.all(20), child: const CircularProgressIndicator(strokeWidth: 10)),
       const Text('Fetching data...'),
     ],
   );
@@ -1370,9 +1170,7 @@ class HealthAppState extends State<HealthApp> {
         itemCount: _healthDataList.length,
         itemBuilder: (_, index) {
           // filter out manual entires if not wanted
-          if (recordingMethodsToFilter.contains(
-            _healthDataList[index].recordingMethod,
-          )) {
+          if (recordingMethodsToFilter.contains(_healthDataList[index].recordingMethod)) {
             return Container();
           }
 
@@ -1381,9 +1179,7 @@ class HealthAppState extends State<HealthApp> {
             return ListTile(
               title: Text("${p.typeString}: ${p.value}"),
               trailing: Text(p.unitString),
-              subtitle: Text(
-                '${p.dateFrom} - ${p.dateTo}\n${p.recordingMethod}',
-              ),
+              subtitle: Text('${p.dateFrom} - ${p.dateTo}\n${p.recordingMethod}'),
               onTap: () {
                 fetchDataByUUID(context, uuid: p.uuid, type: p.type);
               },
@@ -1394,12 +1190,8 @@ class HealthAppState extends State<HealthApp> {
               title: Text(
                 "${p.typeString}: ${(p.value as WorkoutHealthValue).totalEnergyBurned} ${(p.value as WorkoutHealthValue).totalEnergyBurnedUnit?.name}",
               ),
-              trailing: Text(
-                (p.value as WorkoutHealthValue).workoutActivityType.name,
-              ),
-              subtitle: Text(
-                '${p.dateFrom} - ${p.dateTo}\n${p.recordingMethod}',
-              ),
+              trailing: Text((p.value as WorkoutHealthValue).workoutActivityType.name),
+              subtitle: Text('${p.dateFrom} - ${p.dateTo}\n${p.recordingMethod}'),
               onTap: () {
                 fetchDataByUUID(context, uuid: p.uuid, type: p.type);
               },
@@ -1407,15 +1199,9 @@ class HealthAppState extends State<HealthApp> {
           }
           if (p.value is NutritionHealthValue) {
             return ListTile(
-              title: Text(
-                "${p.typeString} ${(p.value as NutritionHealthValue).mealType}: ${(p.value as NutritionHealthValue).name}",
-              ),
-              trailing: Text(
-                '${(p.value as NutritionHealthValue).calories} kcal',
-              ),
-              subtitle: Text(
-                '${p.dateFrom} - ${p.dateTo}\n${p.recordingMethod}',
-              ),
+              title: Text("${p.typeString} ${(p.value as NutritionHealthValue).mealType}: ${(p.value as NutritionHealthValue).name}"),
+              trailing: Text('${(p.value as NutritionHealthValue).calories} kcal'),
+              subtitle: Text('${p.dateFrom} - ${p.dateTo}\n${p.recordingMethod}'),
               onTap: () {
                 fetchDataByUUID(context, uuid: p.uuid, type: p.type);
               },
@@ -1452,20 +1238,14 @@ class HealthAppState extends State<HealthApp> {
     mainAxisAlignment: MainAxisAlignment.center,
     children: [
       Text('Authorization not given.'),
-      Text(
-        'For Google Health Connect please check if you have added the right permissions and services to the manifest file.',
-      ),
+      Text('For Google Health Connect please check if you have added the right permissions and services to the manifest file.'),
       Text('For Apple Health check your permissions in Apple Health.'),
     ],
   );
 
-  Widget _contentHealthConnectStatus = const Text(
-    'No status, click getHealthConnectSdkStatus to get the status.',
-  );
+  Widget _contentHealthConnectStatus = const Text('No status, click getHealthConnectSdkStatus to get the status.');
 
-  Widget _contentSkinTemperatureFeatureStatus = const Text(
-    'No status, click "Check Skin Temp Feature" to get the status.',
-  );
+  Widget _contentSkinTemperatureFeatureStatus = const Text('No status, click "Check Skin Temp Feature" to get the status.');
 
   final Widget _dataAdded = const Text('Data points inserted successfully.');
 
@@ -1475,15 +1255,11 @@ class HealthAppState extends State<HealthApp> {
 
   Widget get _contentChangesReady {
     final token = _changesToken;
-    final tokenPreview = token == null
-        ? 'none'
-        : (token.length > 12 ? '${token.substring(0, 12)}...' : token);
+    final tokenPreview = token == null ? 'none' : (token.length > 12 ? '${token.substring(0, 12)}...' : token);
     final previousToken = _previousChangesToken;
     final previousPreview = previousToken == null
         ? 'none'
-        : (previousToken.length > 12
-            ? '${previousToken.substring(0, 12)}...'
-            : previousToken);
+        : (previousToken.length > 12 ? '${previousToken.substring(0, 12)}...' : previousToken);
     final lastChangesAt = _lastChangesAt;
 
     return ListView.builder(
@@ -1506,18 +1282,12 @@ class HealthAppState extends State<HealthApp> {
 
         final change = _changes[index - 1];
         if (change.type == HealthChangeType.delete) {
-          return ListTile(
-            title: const Text('Delete'),
-            subtitle: Text('recordId: ${change.recordId ?? "unknown"}'),
-          );
+          return ListTile(title: const Text('Delete'), subtitle: Text('recordId: ${change.recordId ?? "unknown"}'));
         }
 
         final dataPoint = change.dataPoint;
         if (dataPoint == null) {
-          return ListTile(
-            title: Text('Upsert ${change.dataType?.name ?? "UNKNOWN"}'),
-            subtitle: const Text('No data point decoded.'),
-          );
+          return ListTile(title: Text('Upsert ${change.dataType?.name ?? "UNKNOWN"}'), subtitle: const Text('No data point decoded.'));
         }
 
         return ListTile(
@@ -1529,13 +1299,9 @@ class HealthAppState extends State<HealthApp> {
     );
   }
 
-  final Widget _contentChangesNotReady = const Text(
-    'No change token yet. Tap "Create Changes Token" after authorization.',
-  );
+  final Widget _contentChangesNotReady = const Text('No change token yet. Tap "Create Changes Token" after authorization.');
 
-  final Widget _dataNotAdded = const Text(
-    'Failed to add data.\nDo you have permissions to add data?',
-  );
+  final Widget _dataNotAdded = const Text('Failed to add data.\nDo you have permissions to add data?');
 
   final Widget _dataNotDeleted = const Text('Failed to delete data');
 
@@ -1552,8 +1318,7 @@ class HealthAppState extends State<HealthApp> {
     AppState.DATA_NOT_DELETED => _dataNotDeleted,
     AppState.STEPS_READY => _stepsFetched,
     AppState.HEALTH_CONNECT_STATUS => _contentHealthConnectStatus,
-    AppState.SKIN_TEMPERATURE_FEATURE_STATUS =>
-      _contentSkinTemperatureFeatureStatus,
+    AppState.SKIN_TEMPERATURE_FEATURE_STATUS => _contentSkinTemperatureFeatureStatus,
     AppState.PERMISSIONS_REVOKING => _permissionsRevoking,
     AppState.PERMISSIONS_REVOKED => _permissionsRevoked,
     AppState.PERMISSIONS_NOT_REVOKED => _permissionsNotRevoked,
@@ -1572,10 +1337,7 @@ class HealthAppState extends State<HealthApp> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              const Text(
-                "Health Data Details",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
+              const Text("Health Data Details", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 10),
               healthPoint == null
                   ? const Text('UUID Not Found!')
@@ -1584,18 +1346,11 @@ class HealthAppState extends State<HealthApp> {
                         controller: scrollController,
                         itemCount: healthPoint.toJson().entries.length,
                         itemBuilder: (context, index) {
-                          String key = healthPoint.toJson().keys.elementAt(
-                            index,
-                          );
+                          String key = healthPoint.toJson().keys.elementAt(index);
                           var value = healthPoint.toJson()[key];
 
                           return ListTile(
-                            title: Text(
-                              key.replaceAll('_', ' ').toUpperCase(),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                            title: Text(key.replaceAll('_', ' ').toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold)),
                             subtitle: Text(value.toString()),
                           );
                         },

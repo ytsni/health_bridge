@@ -1,17 +1,17 @@
 name: health
 description: Wrapper for Apple's HealthKit on iOS and Google's Health Connect on Android.
-version: 13.3.1
+version: 14.0.0
 homepage: https://github.com/carp-dk/carp-health-flutter
 
 environment:
-  sdk: ">=3.8.0 <4.0.0"
-  flutter: ">=3.6.0"
+  sdk: ^3.11.0
+  flutter: ">=3.41.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  intl: '>=0.18.0 <0.21.0'
-  device_info_plus: '^12.1.0'
+  intl: ">=0.18.0 <0.21.0"
+  device_info_plus: "^12.1.0"
   json_annotation: ^4.9.0
   carp_serializable: ^2.0.1 # polymorphic json serialization
 
@@ -30,6 +30,8 @@ dev_dependencies:
   mockito: ^5.4.5
 
 flutter:
+  config:
+    enable-swift-package-manager: true
   plugin:
     platforms:
       android:

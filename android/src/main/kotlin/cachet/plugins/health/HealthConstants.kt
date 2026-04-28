@@ -3,6 +3,7 @@ package cachet.plugins.health
 import kotlin.reflect.KClass
 import androidx.health.connect.client.records.*
 import androidx.health.connect.client.records.MealType
+import androidx.health.connect.client.records.ExerciseSessionRecord
 
 /**
  * Contains all data type mappings, health record classifications, and type conversions

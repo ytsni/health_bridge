@@ -2,14 +2,14 @@ group 'cachet.plugins.health'
 version '1.2'
 
 buildscript {
-    ext.kotlin_version = '1.9.22'
+    ext.kotlin_version = '2.2.10'
     repositories {
         google()
         mavenCentral()
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.13.0'
+        classpath 'com.android.tools.build:gradle:8.13.2'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
@@ -51,9 +51,9 @@ android {
 }
 
 dependencies {
-    def composeBom = platform('androidx.compose:compose-bom:2025.09.00')
+    def composeBom = platform('androidx.compose:compose-bom:2026.03.01')
     implementation(composeBom)
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.2.10"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
 
     implementation("androidx.health.connect:connect-client:1.2.0-alpha02")
     implementation "androidx.fragment:fragment-ktx:1.8.9"

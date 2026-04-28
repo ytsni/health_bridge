@@ -35,7 +35,10 @@ class HealthDataChanges(
         val types = (args?.get("types") as? ArrayList<*>)?.filterIsInstance<String>() ?: emptyList()
 
         if (types.isEmpty()) {
-            result.success(null)
+            result.error(
+                    "FLUTTER_HEALTH::ERROR",
+                    "No data types provided",
+            )
             return
         }
 

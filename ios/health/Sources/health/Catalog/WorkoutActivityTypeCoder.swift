@@ -1,76 +1,40 @@
 import HealthKit
 
-/// Utilities class containing helper methods for data manipulation
-class HealthUtilities {
-    /// Sanitize metadata to make it Flutter-friendly
-    /// - Parameter metadata: The metadata dictionary to sanitize
-    /// - Returns: A dictionary with sanitized values
-    static func sanitizeMetadata(_ metadata: [String: Any]?) -> [String: Any] {
-        guard let metadata else { return [:] }
+/// Default translator between plugin workout keys and `HKWorkoutActivityType`.
+struct WorkoutActivityTypeCoder: WorkoutActivityTypeCoding {
+    /// Forward lookup keyed by the plugin's uppercase activity constants.
+    private let activityTypesByPluginKey: [String: HKWorkoutActivityType]
 
-        var sanitized = [String: Any]()
+    /// Reverse lookup keyed by the HealthKit enum raw value.
+    private let pluginKeysByActivityType: [UInt: String]
 
-        for (key, value) in metadata {
-            switch value {
-            case let stringValue as String:
-                sanitized[key] = stringValue
-            case let numberValue as NSNumber:
-                sanitized[key] = numberValue
-            case let boolValue as Bool:
-                sanitized[key] = boolValue
-            case let arrayValue as [Any]:
-                sanitized[key] = sanitizeArray(arrayValue)
-            case let mapValue as [String: Any]:
-                sanitized[key] = sanitizeMetadata(mapValue)
-            default:
-                continue
-            }
+    /// Creates a coder backed by the catalog's workout activity map.
+    init(activityTypesByPluginKey: [String: HKWorkoutActivityType]) {
+        self.activityTypesByPluginKey = activityTypesByPluginKey
+
+        var pluginKeysByRawValue: [UInt: [String]] = [:]
+        for (pluginKey, activityType) in activityTypesByPluginKey {
+            pluginKeysByRawValue[activityType.rawValue, default: []].append(pluginKey)
         }
 
-        return sanitized
-    }
-
-    /// Sanitize an array to make it Flutter-friendly
-    /// - Parameter array: The array to sanitize
-    /// - Returns: An array with sanitized values
-    static func sanitizeArray(_ array: [Any]) -> [Any] {
-        var sanitizedArray: [Any] = []
-
-        for value in array {
-            switch value {
-            case let stringValue as String:
-                sanitizedArray.append(stringValue)
-            case let numberValue as NSNumber:
-                sanitizedArray.append(numberValue)
-            case let boolValue as Bool:
-                sanitizedArray.append(boolValue)
-            case let arrayValue as [Any]:
-                sanitizedArray.append(sanitizeArray(arrayValue))
-            case let mapValue as [String: Any]:
-                sanitizedArray.append(sanitizeMetadata(mapValue))
-            default:
-                continue
-            }
+        pluginKeysByActivityType = pluginKeysByRawValue.reduce(into: [:]) { partialResult, entry in
+            partialResult[entry.key] = entry.value.sorted().first
         }
-
-        return sanitizedArray
     }
 
-    /// Convert milliseconds since epoch to Date
-    /// - Parameter milliseconds: Milliseconds since epoch
-    /// - Returns: Date object
-    static func dateFromMilliseconds(_ milliseconds: Double) -> Date {
-        Date(timeIntervalSince1970: milliseconds / 1000)
+    /// Resolves the HealthKit activity type used for `pluginKey`.
+    func activityType(for pluginKey: String) -> HKWorkoutActivityType? {
+        activityTypesByPluginKey[pluginKey]
     }
-}
 
-/// Extension to provide type conversion helpers for HKWorkoutActivityType
-extension HKWorkoutActivityType {
-    /// Convert HKWorkoutActivityType to string
-    /// - Parameter type: The workout activity type
-    /// - Returns: String representation of the activity type
-    static func toString(_ type: HKWorkoutActivityType) -> String {
-        switch type {
+    /// Resolves the canonical plugin key for `activityType`.
+    func pluginKey(for activityType: HKWorkoutActivityType) -> String? {
+        pluginKeysByActivityType[activityType.rawValue]
+    }
+
+    /// Resolves the legacy lower-camel workout string returned to Flutter summaries.
+    func legacyName(for activityType: HKWorkoutActivityType) -> String {
+        return switch activityType {
         case .americanFootball: "americanFootball"
         case .archery: "archery"
         case .australianFootball: "australianFootball"
@@ -145,8 +109,12 @@ extension HKWorkoutActivityType {
         case .taiChi: "taiChi"
         case .mixedCardio: "mixedCardio"
         case .handCycling: "handCycling"
-        case .underwaterDiving: "underwaterDiving"
-        default: "other"
+        default:
+            if #available(iOS 17.0, macOS 14.0, *), activityType == .underwaterDiving {
+                "underwaterDiving"
+            } else {
+                "other"
+            }
         }
     }
 }

@@ -1,0 +1,12 @@
+[
+    {
+        "label": "Debug Flutter example",
+        "adapter": "Dart",
+        "type": "flutter",
+        "request": "launch",
+        "program": "lib/main.dart",
+        "cwd": "$ZED_WORKTREE_ROOT/example",
+        "useFvm": true,
+        // "build": "Prepare Flutter plugin example"
+    },
+]
