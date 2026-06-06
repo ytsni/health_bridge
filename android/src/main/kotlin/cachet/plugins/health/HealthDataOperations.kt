@@ -11,8 +11,11 @@ import androidx.health.connect.client.time.TimeRangeFilter
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel.Result
 import java.time.Instant
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Handles Health Connect operational tasks including permissions, SDK status, and data deletion
@@ -24,6 +27,8 @@ class HealthDataOperations(
         private val healthConnectStatus: Int,
         private val healthConnectAvailable: Boolean
 ) {
+
+    private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main
 
     /**
      * Retrieves the current Health Connect SDK availability status. Returns status codes indicating
