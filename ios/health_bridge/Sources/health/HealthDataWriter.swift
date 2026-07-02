@@ -898,26 +898,99 @@ class HealthDataWriter {
             }
         }
 
-        let workout = HKWorkout(
-            activityType: activityTypeValue,
-            start: dateFrom,
-            end: dateTo,
-            duration: dateTo.timeIntervalSince(dateFrom),
-            totalEnergyBurned: totalEnergyBurned ?? nil,
-            totalDistance: totalDistance ?? nil,
-            metadata: metadata
+        // Build the workout with HKWorkoutBuilder (iOS 12+). The old
+        // HKWorkout(...) convenience initializer was deprecated in iOS 17 and
+        // stored energy/distance only as opaque summary attributes with no
+        // underlying samples — which the Move ring and nutrition apps (e.g.
+        // MyFitnessPal) do NOT read. The builder instead lets us add real
+        // HKQuantitySamples (activeEnergyBurned, distance) that ARE surfaced to
+        // those consumers, so the calorie figure actually feeds a daily budget.
+        let configuration = HKWorkoutConfiguration()
+        configuration.activityType = activityTypeValue
+
+        let builder = HKWorkoutBuilder(
+            healthStore: healthStore,
+            configuration: configuration,
+            device: nil
         )
 
-        healthStore.save(
-            workout,
-            withCompletion: { success, error in
-                if let err = error {
-                    print("Error Saving Workout. Sample: \(err.localizedDescription)")
+        // Real samples to attach, each spanning the full workout interval.
+        var samples: [HKSample] = []
+        if let energy = totalEnergyBurned {
+            samples.append(
+                HKCumulativeQuantitySample(
+                    type: HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned)!,
+                    quantity: energy,
+                    start: dateFrom,
+                    end: dateTo
+                )
+            )
+        }
+        if let distance = totalDistance {
+            samples.append(
+                HKCumulativeQuantitySample(
+                    type: HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning)!,
+                    quantity: distance,
+                    start: dateFrom,
+                    end: dateTo
+                )
+            )
+        }
+
+        // Single-fire result guard: the builder chain has several async
+        // completions and we must call `result` exactly once on every path.
+        var didReturn = false
+        func finish(_ value: Bool) {
+            if didReturn { return }
+            didReturn = true
+            DispatchQueue.main.async { result(value) }
+        }
+
+        func fail(_ context: String, _ error: Error?) {
+            if let error = error {
+                print("Error \(context): \(error.localizedDescription)")
+            }
+            finish(false)
+        }
+
+        // begin -> (add samples) -> (add metadata) -> end -> finish
+        builder.beginCollection(withStart: dateFrom) { began, beginError in
+            guard began else { return fail("beginning workout collection", beginError) }
+
+            let addMetadataThenEnd = {
+                let endCollection = {
+                    builder.endCollection(withEnd: dateTo) { ended, endError in
+                        guard ended else { return fail("ending workout collection", endError) }
+                        builder.finishWorkout { workout, finishError in
+                            if workout == nil {
+                                return fail("finishing workout", finishError)
+                            }
+                            finish(true)
+                        }
+                    }
                 }
-                DispatchQueue.main.async {
-                    result(success)
+                if let metadata = metadata {
+                    builder.addMetadata(metadata) { _, metadataError in
+                        // Metadata is best-effort — a failure here shouldn't sink
+                        // the whole workout write.
+                        if let metadataError = metadataError {
+                            print("Error adding workout metadata: \(metadataError.localizedDescription)")
+                        }
+                        endCollection()
+                    }
+                } else {
+                    endCollection()
                 }
             }
-        )
+
+            if samples.isEmpty {
+                addMetadataThenEnd()
+            } else {
+                builder.add(samples) { added, addError in
+                    guard added else { return fail("adding workout samples", addError) }
+                    addMetadataThenEnd()
+                }
+            }
+        }
     }
 }
