@@ -235,7 +235,7 @@ public class SwiftHealthPlugin: NSObject, FlutterPlugin {
         unitDict[HealthConstants.MILLIGRAM_PER_DECILITER] = HKUnit(from: "mg/dL")
         unitDict[HealthConstants.METER_PER_SECOND] = HKUnit(from: "m/s")
         unitDict[HealthConstants.MILLILITER_PER_KILOGRAM_PER_MINUTE] = HKUnit(from: "mL/(kg*min)")
-        unitDict[HealthConstants.WATT] = HKUnit.watt()
+        unitDict[HealthConstants.WATT] = HKUnit(from: "W")
         unitDict[HealthConstants.REVOLUTION_PER_MINUTE] = HKUnit(from: "count/min")
         unitDict[HealthConstants.UNKNOWN_UNIT] = HKUnit.count()
         unitDict[HealthConstants.NO_UNIT] = HKUnit.count()
