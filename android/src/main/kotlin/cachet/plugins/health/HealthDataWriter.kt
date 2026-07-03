@@ -274,10 +274,13 @@ class HealthDataWriter(
                     )
                 }
 
-                // Add energy burned record if provided
+                // Add energy burned record if provided. ActiveCaloriesBurnedRecord
+                // (not Total): callers pass ACTIVE energy (exercise above resting),
+                // mirroring the iOS activeEnergyBurned sample this same argument
+                // produces — Total would claim active + basal and over-credit.
                 if (totalEnergyBurned != null) {
                     list.add(
-                            TotalCaloriesBurnedRecord(
+                            ActiveCaloriesBurnedRecord(
                                     startTime = startTime,
                                     startZoneOffset = null,
                                     endTime = endTime,

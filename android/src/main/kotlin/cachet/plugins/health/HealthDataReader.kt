@@ -650,6 +650,32 @@ class HealthDataReader(
             }
 
             val energyDeferred = scope.async {
+                // Prefer active energy (what writeWorkoutData now records); fall
+                // back to total-calorie records written by other apps. Each read
+                // fails independently — a missing READ_ACTIVE_CALORIES_BURNED
+                // grant must not sink the total-calories fallback.
+                val active = try {
+                    val activeResponse = healthConnectClient.readRecords(
+                        ReadRecordsRequest(
+                            recordType = ActiveCaloriesBurnedRecord::class,
+                            timeRangeFilter = TimeRangeFilter.between(
+                                record.startTime,
+                                record.endTime,
+                            ),
+                        ),
+                    )
+                    activeResponse.records
+                        .groupBy { Pair(it.startTime, it.endTime) }
+                        .values.sumOf { group -> group.maxOf { it.energy.inKilocalories } }
+                } catch (e: Exception) {
+                    Log.w(
+                        "FLUTTER_HEALTH::WARNING",
+                        "Unable to read active energy for workout ${record.metadata.id}: ${e.message}"
+                    )
+                    0.0
+                }
+                if (active > 0.0) return@async active
+
                 try {
                     val response = healthConnectClient.readRecords(
                         ReadRecordsRequest(
