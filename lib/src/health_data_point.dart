@@ -3,6 +3,9 @@ part of '../health.dart';
 /// Types of health platforms.
 enum HealthPlatformType { appleHealth, googleHealthConnect }
 
+/// Native namespace that defines the semantics of [HealthDataPoint.clientRecordId].
+enum HealthClientRecordIdType { healthKitSyncIdentifier, healthKitExternalUuid, healthConnectClientRecordId }
+
 /// A [HealthDataPoint] object corresponds to a data point capture from
 /// Apple HealthKit or Google Health Connect with a [HealthValue]
 /// as value.
@@ -10,6 +13,18 @@ enum HealthPlatformType { appleHealth, googleHealthConnect }
 class HealthDataPoint {
   /// UUID of the data point.
   String uuid;
+
+  /// Stable client-defined identity for the record, when the source platform
+  /// exposes one. On Health Connect this is `Metadata.clientRecordId`; on
+  /// HealthKit this is the sync identifier or external UUID metadata.
+  String? clientRecordId;
+
+  /// Native key namespace for [clientRecordId]. Required to distinguish, for
+  /// example, an Apple sync identifier from an external UUID with the same text.
+  HealthClientRecordIdType? clientRecordIdType;
+
+  /// Monotonic version associated with [clientRecordId], when available.
+  int? clientRecordVersion;
 
   /// The quantity value of the data point
   HealthValue value;
@@ -62,6 +77,9 @@ class HealthDataPoint {
 
   HealthDataPoint({
     required this.uuid,
+    this.clientRecordId,
+    this.clientRecordIdType,
+    this.clientRecordVersion,
     required this.value,
     required this.type,
     required this.unit,
@@ -135,6 +153,15 @@ class HealthDataPoint {
       orElse: () => dataTypeToUnit[dataType] ?? HealthDataUnit.UNKNOWN_UNIT,
     );
     final String? uuid = dataPoint["uuid"] as String?;
+    final String? clientRecordId = dataPoint["client_record_id"] as String?;
+    final String? rawClientRecordIdType = dataPoint["client_record_id_type"] as String?;
+    final HealthClientRecordIdType? clientRecordIdType = rawClientRecordIdType == null
+        ? null
+        : HealthClientRecordIdType.values.firstWhere(
+            (value) => value.name == rawClientRecordIdType,
+            orElse: () => throw FormatException('Unsupported client record identity type: $rawClientRecordIdType'),
+          );
+    final int? clientRecordVersion = (dataPoint["client_record_version"] as num?)?.toInt();
     final String? deviceModel = dataPoint["device_model"] as String?;
 
     // Set WorkoutSummary, if available (accepts both snake_case and camelCase keys).
@@ -154,6 +181,9 @@ class HealthDataPoint {
 
     return HealthDataPoint(
       uuid: uuid ?? "",
+      clientRecordId: clientRecordId,
+      clientRecordIdType: clientRecordIdType,
+      clientRecordVersion: clientRecordVersion,
       value: value,
       type: dataType,
       unit: unit,
@@ -174,6 +204,9 @@ class HealthDataPoint {
   String toString() =>
       """$runtimeType -
     uuid: $uuid,
+    clientRecordId: $clientRecordId,
+    clientRecordIdType: $clientRecordIdType,
+    clientRecordVersion: $clientRecordVersion,
     value: ${value.toString()},
     unit: ${unit.name},
     dateFrom: $dateFrom,
@@ -192,6 +225,9 @@ class HealthDataPoint {
   bool operator ==(Object other) =>
       other is HealthDataPoint &&
       uuid == other.uuid &&
+      clientRecordId == other.clientRecordId &&
+      clientRecordIdType == other.clientRecordIdType &&
+      clientRecordVersion == other.clientRecordVersion &&
       value == other.value &&
       unit == other.unit &&
       dateFrom == other.dateFrom &&
@@ -208,6 +244,9 @@ class HealthDataPoint {
   @override
   int get hashCode => Object.hash(
     uuid,
+    clientRecordId,
+    clientRecordIdType,
+    clientRecordVersion,
     value,
     unit,
     dateFrom,

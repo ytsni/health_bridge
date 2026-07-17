@@ -22,6 +22,9 @@ class FromJsonFactory {
   }
 
   T fromJson<T extends Serializable>(Map<String, dynamic> json) {
+    // Public model codecs must not depend on constructing the platform plugin
+    // first. Registration is idempotent and does not deserialize recursively.
+    _registerFromJsonFunctions();
     final type = json[Serializable.typeKey];
     final function = _registry[type];
     if (function == null) {

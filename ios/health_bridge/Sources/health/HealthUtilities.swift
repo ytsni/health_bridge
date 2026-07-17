@@ -1,7 +1,26 @@
 import HealthKit
+#if canImport(HealthBridgeWorkoutCore)
+import HealthBridgeWorkoutCore
+#endif
 
 /// Utilities class containing helper methods for data manipulation
 class HealthUtilities {
+    /// Append only the explicitly supported stable identity fields. This keeps
+    /// the client identity contract independent from arbitrary Health metadata.
+    static func appendStableClientIdentity(
+        from metadata: [String: Any]?,
+        to dictionary: inout [String: Any]
+    ) {
+        guard let identity = HealthSampleClientIdentity.extract(from: metadata) else {
+            return
+        }
+        dictionary["client_record_id"] = identity.recordID
+        dictionary["client_record_id_type"] = identity.kind.rawValue
+        if let version = identity.recordVersion {
+            dictionary["client_record_version"] = version
+        }
+    }
+
     /// Sanitize metadata to make it Flutter-friendly
     /// - Parameter metadata: The metadata dictionary to sanitize
     /// - Returns: A dictionary with sanitized values

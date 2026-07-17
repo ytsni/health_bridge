@@ -3,7 +3,6 @@ package cachet.plugins.health
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.os.Handler
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
@@ -27,23 +26,21 @@ import kotlinx.coroutines.*
  * Connect APIs.
  */
 class HealthPlugin(private var channel: MethodChannel? = null) :
-        MethodCallHandler, ActivityResultListener, Result, ActivityAware, FlutterPlugin {
+        MethodCallHandler, ActivityResultListener, ActivityAware, FlutterPlugin {
 
-    private var mResult: Result? = null
-    private var handler: Handler? = null
+    private val permissionRequestLifecycle = HealthConnectPermissionRequestLifecycle()
     private var activity: Activity? = null
     private var context: Context? = null
-    private var healthConnectRequestPermissionsLauncher: ActivityResultLauncher<Set<String>>? = null
-    private lateinit var healthConnectClient: HealthConnectClient
-    private lateinit var scope: CoroutineScope
-    private var isReplySubmitted = false
+    private var healthConnectClient: HealthConnectClient? = null
+    private var scope: CoroutineScope? = null
 
     // Helper classes
-    private lateinit var dataReader: HealthDataReader
-    private lateinit var dataWriter: HealthDataWriter
-    private lateinit var dataOperations: HealthDataOperations
-    private lateinit var dataConverter: HealthDataConverter
-    private lateinit var dataChanges: HealthDataChanges
+    private var dataReader: HealthDataReader? = null
+    private var dataWriter: HealthDataWriter? = null
+    private var dataOperations: HealthDataOperations? = null
+    private var dataConverter: HealthDataConverter? = null
+    private var dataChanges: HealthDataChanges? = null
+    private var workoutMethodHandler: HealthWorkoutMethodHandler? = null
 
     // Health Connect availability
     private var healthConnectAvailable = false
@@ -66,7 +63,6 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, CHANNEL_NAME)
         channel?.setMethodCallHandler(this)
         context = flutterPluginBinding.applicationContext
-        handler = Handler(context!!.mainLooper)
 
         checkAvailability()
         if (healthConnectAvailable) {
@@ -83,25 +79,22 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
      * @param binding Plugin binding (unused in cleanup)
      */
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        permissionRequestLifecycle.detachPermanently()
+        channel?.setMethodCallHandler(null)
         channel = null
         activity = null
-        scope.cancel()
-    }
-
-    override fun success(p0: Any?) {
-        handler?.post { mResult?.success(p0) }
-    }
-
-    override fun notImplemented() {
-        handler?.post { mResult?.notImplemented() }
-    }
-
-    override fun error(
-            errorCode: String,
-            errorMessage: String?,
-            errorDetails: Any?,
-    ) {
-        handler?.post { mResult?.error(errorCode, errorMessage, errorDetails) }
+        context = null
+        scope?.cancel()
+        scope = null
+        healthConnectClient = null
+        dataReader = null
+        dataWriter = null
+        dataOperations = null
+        dataConverter = null
+        dataChanges = null
+        workoutMethodHandler = null
+        healthConnectAvailable = false
+        healthConnectStatus = HealthConnectClient.SDK_UNAVAILABLE
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
@@ -122,7 +115,7 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
             "installHealthConnect" -> installHealthConnect(call, result)
             "getHealthConnectSdkStatus" -> {
                 checkAvailability()
-                if (healthConnectAvailable && !(this::dataOperations.isInitialized)) {
+                if (healthConnectAvailable && dataOperations == null) {
                     healthConnectClient = HealthConnectClient.getOrCreate(context!!)
                     initializeHelpers()
                 }
@@ -130,56 +123,107 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
             }
 
             // Permissions
-            "hasPermissions" -> dataOperations.hasPermissions(call, result)
+            "hasPermissions" -> checkNotNull(dataOperations).hasPermissions(call, result)
             "requestAuthorization" -> requestAuthorization(call, result)
-            "revokePermissions" -> dataOperations.revokePermissions(call, result)
+            "revokePermissions" -> checkNotNull(dataOperations).revokePermissions(call, result)
 
             // History permissions
             "isHealthDataHistoryAvailable" ->
-                    dataOperations.isHealthDataHistoryAvailable(call, result)
+                    checkNotNull(dataOperations).isHealthDataHistoryAvailable(call, result)
             "isHealthDataHistoryAuthorized" ->
-                    dataOperations.isHealthDataHistoryAuthorized(call, result)
+                    checkNotNull(dataOperations).isHealthDataHistoryAuthorized(call, result)
             "requestHealthDataHistoryAuthorization" ->
                     requestHealthDataHistoryAuthorization(call, result)
 
             // Background permissions
             "isHealthDataInBackgroundAvailable" ->
-                    dataOperations.isHealthDataInBackgroundAvailable(call, result)
+                    checkNotNull(dataOperations).isHealthDataInBackgroundAvailable(call, result)
             "isHealthDataInBackgroundAuthorized" ->
-                    dataOperations.isHealthDataInBackgroundAuthorized(call, result)
+                    checkNotNull(dataOperations).isHealthDataInBackgroundAuthorized(call, result)
             "requestHealthDataInBackgroundAuthorization" ->
                     requestHealthDataInBackgroundAuthorization(call, result)
             "isSkinTemperatureAvailable" ->
-                    dataOperations.isSkinTemperatureAvailable(call, result)
+                    checkNotNull(dataOperations).isSkinTemperatureAvailable(call, result)
 
             // Reading data
-            "getData" -> dataReader.getData(call, result)
-            "getDataByUUID" -> dataReader.getDataByUUID(call, result)
-            "getIntervalData" -> dataReader.getIntervalData(call, result)
-            "getAggregateData" -> dataReader.getAggregateData(call, result)
-            "getTotalStepsInInterval" -> dataReader.getTotalStepsInInterval(call, result)
-            "getChangesToken" -> dataChanges.getChangesToken(call, result)
-            "getChanges" -> dataChanges.getChanges(call, result)
+            "getData" -> checkNotNull(dataReader).getData(call, result)
+            "getDataByUUID" -> checkNotNull(dataReader).getDataByUUID(call, result)
+            "getIntervalData" -> checkNotNull(dataReader).getIntervalData(call, result)
+            "getAggregateData" -> checkNotNull(dataReader).getAggregateData(call, result)
+            "getTotalStepsInInterval" ->
+                    checkNotNull(dataReader).getTotalStepsInInterval(call, result)
+            "getChangesToken" -> checkNotNull(dataChanges).getChangesToken(call, result)
+            "getChanges" -> checkNotNull(dataChanges).getChanges(call, result)
 
             // Writing data
-            "writeData" -> dataWriter.writeData(call, result)
-            "writeWorkoutData" -> dataWriter.writeWorkoutData(call, result)
-            "writeBloodPressure" -> dataWriter.writeBloodPressure(call, result)
-            "writeBloodOxygen" -> dataWriter.writeBloodOxygen(call, result)
-            "writeMenstruationFlow" -> dataWriter.writeMenstruationFlow(call, result)
-            "writeMeal" -> dataWriter.writeMeal(call, result)
-            "writeActivityIntensity" -> dataWriter.writeActivityIntensity(call, result)
-            "startWorkoutRoute" -> dataWriter.startWorkoutRoute(result)
-            "insertWorkoutRouteData" -> dataWriter.insertWorkoutRouteData(call, result)
-            "finishWorkoutRoute" -> dataWriter.finishWorkoutRoute(call, result)
-            "discardWorkoutRoute" -> dataWriter.discardWorkoutRoute(call, result)
+            "writeData" -> checkNotNull(dataWriter).writeData(call, result)
+            "writeWorkoutData" -> {
+                if (healthConnectAvailable && workoutMethodHandler != null) {
+                    checkNotNull(workoutMethodHandler).write(call.arguments, result)
+                } else {
+                    val arguments = call.arguments
+                    val energyExpected =
+                            arguments is Map<*, *> && arguments["energyClientRecordId"] != null
+                    result.success(
+                            WorkoutWriteResultPayload.unavailable(
+                                            energyExpected = energyExpected,
+                                            platformCode = "healthConnectUnavailable",
+                                    )
+                                    .toMap()
+                    )
+                }
+            }
+            "lookupWorkoutData" -> {
+                if (healthConnectAvailable && workoutMethodHandler != null) {
+                    checkNotNull(workoutMethodHandler).lookup(call.arguments, result)
+                } else {
+                    result.success(unavailableLookupResult(call.arguments))
+                }
+            }
+            "getAuthorizationSnapshot" -> {
+                if (healthConnectAvailable && workoutMethodHandler != null) {
+                    checkNotNull(workoutMethodHandler).authorizationSnapshot(call.arguments, result)
+                } else {
+                    val types =
+                            try {
+                                authorizationTypesFromMap(call.arguments)
+                            } catch (_: WorkoutPayloadException) {
+                                result.error(
+                                        "invalidInput",
+                                        "Invalid authorization snapshot arguments",
+                                        null,
+                                )
+                                return
+                            }
+                    result.success(
+                            AuthorizationSnapshotPayload.unavailable(
+                                            types,
+                                            "healthConnectUnavailable",
+                                    )
+                                    .toMap()
+                    )
+                }
+            }
+            "writeBloodPressure" -> checkNotNull(dataWriter).writeBloodPressure(call, result)
+            "writeBloodOxygen" -> checkNotNull(dataWriter).writeBloodOxygen(call, result)
+            "writeMenstruationFlow" ->
+                    checkNotNull(dataWriter).writeMenstruationFlow(call, result)
+            "writeMeal" -> checkNotNull(dataWriter).writeMeal(call, result)
+            "writeActivityIntensity" ->
+                    checkNotNull(dataWriter).writeActivityIntensity(call, result)
+            "startWorkoutRoute" -> checkNotNull(dataWriter).startWorkoutRoute(result)
+            "insertWorkoutRouteData" ->
+                    checkNotNull(dataWriter).insertWorkoutRouteData(call, result)
+            "finishWorkoutRoute" -> checkNotNull(dataWriter).finishWorkoutRoute(call, result)
+            "discardWorkoutRoute" -> checkNotNull(dataWriter).discardWorkoutRoute(call, result)
             // TODO: Add support for multiple speed for iOS as well
             // "writeMultipleSpeed" -> dataWriter.writeMultipleSpeedData(call, result)
 
             // Deleting data
-            "delete" -> dataOperations.deleteData(call, result)
-            "deleteByUUID" -> dataOperations.deleteByUUID(call, result)
-            "deleteByClientRecordId" -> dataOperations.deleteByClientRecordId(call, result)
+            "delete" -> checkNotNull(dataOperations).deleteData(call, result)
+            "deleteByUUID" -> checkNotNull(dataOperations).deleteByUUID(call, result)
+            "deleteByClientRecordId" ->
+                    checkNotNull(dataOperations).deleteByClientRecordId(call, result)
             else -> result.notImplemented()
         }
     }
@@ -200,14 +244,18 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
         val requestPermissionActivityContract =
                 PermissionController.createRequestPermissionResultContract()
 
-        healthConnectRequestPermissionsLauncher =
+        val launcher =
                 (activity as ComponentActivity).registerForActivityResult(
                         requestPermissionActivityContract
                 ) { granted -> onHealthConnectPermissionCallback(granted) }
+        permissionRequestLifecycle.attach(
+                AndroidHealthConnectPermissionLauncher(launcher)
+        )
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
-        onDetachedFromActivity()
+        activity = null
+        permissionRequestLifecycle.detachForConfigurationChange()
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
@@ -219,11 +267,8 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
      * permission launchers.
      */
     override fun onDetachedFromActivity() {
-        if (channel == null) {
-            return
-        }
         activity = null
-        healthConnectRequestPermissionsLauncher = null
+        permissionRequestLifecycle.detachPermanently()
     }
 
     /**
@@ -231,7 +276,7 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
      * Connect is installed and accessible.
      */
     private fun checkAvailability() {
-        healthConnectStatus = HealthConnectClient.getSdkStatus(context!!)
+        healthConnectStatus = HealthConnectClient.getSdkStatus(checkNotNull(context))
         healthConnectAvailable = healthConnectStatus == HealthConnectClient.SDK_AVAILABLE
     }
 
@@ -240,17 +285,43 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
      * instances of reader, writer, operations, and converter classes.
      */
     private fun initializeHelpers() {
-        dataConverter = HealthDataConverter()
-        dataReader = HealthDataReader(healthConnectClient, scope, dataConverter)
-        dataWriter = HealthDataWriter(healthConnectClient, scope)
+        val client = checkNotNull(healthConnectClient)
+        val operationScope = checkNotNull(scope)
+        val appContext = checkNotNull(context)
+        val converter = HealthDataConverter()
+        dataConverter = converter
+        dataReader = HealthDataReader(client, operationScope, converter)
+        dataWriter = HealthDataWriter(client, operationScope)
         dataOperations =
                 HealthDataOperations(
-                        healthConnectClient,
-                        scope,
+                        client,
+                        operationScope,
                         healthConnectStatus,
                         healthConnectAvailable
                 )
-        dataChanges = HealthDataChanges(healthConnectClient, scope, context!!, dataConverter)
+        dataChanges = HealthDataChanges(client, operationScope, appContext, converter)
+        workoutMethodHandler =
+                HealthWorkoutMethodHandler(
+                        operationScope,
+                        HealthWorkoutOperations(client, appContext.packageName),
+                )
+    }
+
+    private fun unavailableLookupResult(arguments: Any?): Map<String, Any?> {
+        val energyExpected =
+                arguments is Map<*, *> && arguments["energyClientRecordId"] != null
+        val platformCode =
+                try {
+                    WorkoutLookupRequest.fromMap(arguments)
+                    "healthConnectUnavailable"
+                } catch (_: WorkoutPayloadException) {
+                    "invalidInput"
+                }
+        return WorkoutLookupResultPayload.unavailable(
+                        energyExpected = energyExpected,
+                        platformCode = platformCode,
+                )
+                .toMap()
     }
 
     /**
@@ -282,22 +353,11 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
      * @param permissionGranted Set of permission strings that were granted
      */
     private fun onHealthConnectPermissionCallback(permissionGranted: Set<String>) {
-        if (!isReplySubmitted) {
-            if (permissionGranted.isEmpty()) {
-                mResult?.success(false)
-                Log.i(
-                        "FLUTTER_HEALTH",
-                        "Health Connect permissions were not granted! Make sure to declare the required permissions in the AndroidManifest.xml file."
-                )
-            } else {
-                mResult?.success(true)
-                Log.i(
-                        "FLUTTER_HEALTH",
-                        "${permissionGranted.size} Health Connect permissions were granted!"
-                )
-                Log.i("FLUTTER_HEALTH", "Permissions granted: $permissionGranted")
-            }
-            isReplySubmitted = true
+        if (permissionRequestLifecycle.completeFromCallback(permissionGranted)) {
+            Log.i(
+                    "FLUTTER_HEALTH",
+                    "Health Connect permission request completed with ${permissionGranted.size} returned permissions."
+            )
         }
     }
 
@@ -314,23 +374,18 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
             return
         }
 
-        if (healthConnectRequestPermissionsLauncher == null) {
-            result.success(false)
-            Log.i("FLUTTER_HEALTH", "Permission launcher not found")
-            return
-        }
-
-        // Store the result to be called in onHealthConnectPermissionCallback
-        mResult = result
-        isReplySubmitted = false
-
-        val permList = dataOperations.preparePermissionsList(call)
+        val permList =
+                try {
+                    dataOperations?.preparePermissionsList(call)
+                } catch (_: Exception) {
+                    null
+                }
         if (permList == null) {
             result.success(false)
             return
         }
 
-        healthConnectRequestPermissionsLauncher!!.launch(permList.toSet())
+        permissionRequestLifecycle.launch(permList.toSet(), result)
     }
 
     /**
@@ -341,16 +396,15 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
      * @param result Flutter result callback for permission request outcome
      */
     private fun requestHealthDataHistoryAuthorization(call: MethodCall, result: Result) {
-        if (context == null || healthConnectRequestPermissionsLauncher == null) {
+        if (context == null) {
             result.success(false)
             Log.i("FLUTTER_HEALTH", "Permission launcher not found")
             return
         }
 
-        mResult = result
-        isReplySubmitted = false
-        healthConnectRequestPermissionsLauncher!!.launch(
-                setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY)
+        permissionRequestLifecycle.launch(
+                setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY),
+                result,
         )
     }
 
@@ -362,16 +416,126 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
      * @param result Flutter result callback for permission request outcome
      */
     private fun requestHealthDataInBackgroundAuthorization(call: MethodCall, result: Result) {
-        if (context == null || healthConnectRequestPermissionsLauncher == null) {
+        if (context == null) {
             result.success(false)
             Log.i("FLUTTER_HEALTH", "Permission launcher not found")
             return
         }
 
-        mResult = result
-        isReplySubmitted = false
-        healthConnectRequestPermissionsLauncher!!.launch(
-                setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND)
+        permissionRequestLifecycle.launch(
+                setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND),
+                result,
         )
     }
+}
+
+internal interface HealthConnectPermissionLauncher {
+    fun launch(permissions: Set<String>)
+
+    fun unregister()
+}
+
+private class AndroidHealthConnectPermissionLauncher(
+        private val delegate: ActivityResultLauncher<Set<String>>
+) : HealthConnectPermissionLauncher {
+    override fun launch(permissions: Set<String>) {
+        delegate.launch(permissions)
+    }
+
+    override fun unregister() {
+        delegate.unregister()
+    }
+}
+
+/** Couples the single pending result to the launcher registered by the current Activity. */
+internal class HealthConnectPermissionRequestLifecycle(
+        private val completion: HealthConnectPermissionRequestCompletion =
+                HealthConnectPermissionRequestCompletion()
+) {
+    private var launcher: HealthConnectPermissionLauncher? = null
+
+    fun attach(launcher: HealthConnectPermissionLauncher) {
+        releaseLauncher()
+        this.launcher = launcher
+    }
+
+    fun launch(permissions: Set<String>, result: Result) {
+        val currentLauncher = launcher
+        if (currentLauncher == null) {
+            result.success(false)
+            return
+        }
+        if (!completion.begin(result)) {
+            result.success(false)
+            return
+        }
+
+        try {
+            currentLauncher.launch(permissions)
+        } catch (_: Exception) {
+            completion.failImmediately()
+        }
+    }
+
+    fun detachForConfigurationChange() {
+        // Do not unregister here: ActivityResultRegistry carries launched keys and queued results
+        // through recreation. The new Activity registers the replacement callback on reattach.
+        launcher = null
+    }
+
+    fun detachPermanently() {
+        try {
+            releaseLauncher()
+        } finally {
+            completion.failImmediately()
+        }
+    }
+
+    fun completeFromCallback(permissionGranted: Set<String>): Boolean =
+            completion.completeFromCallback(permissionGranted)
+
+    private fun releaseLauncher() {
+        val currentLauncher = launcher
+        launcher = null
+        try {
+            currentLauncher?.unregister()
+        } catch (_: Exception) {
+            // The launcher is already cleared; permanent detach clears the result in its finally.
+        }
+    }
+}
+
+/** Owns the single pending Flutter result for Health Connect's activity-result callback. */
+internal class HealthConnectPermissionRequestCompletion {
+    private val lock = Any()
+    private var pendingResult: Result? = null
+
+    fun begin(result: Result): Boolean =
+            synchronized(lock) {
+                if (pendingResult != null) {
+                    false
+                } else {
+                    pendingResult = result
+                    true
+                }
+            }
+
+    fun completeFromCallback(
+            @Suppress("UNUSED_PARAMETER") permissionGranted: Set<String>
+    ): Boolean = success(true)
+
+    fun failImmediately(): Boolean = success(false)
+
+    private fun success(value: Any?): Boolean {
+        val result = takePendingResult() ?: return false
+        result.success(value)
+        return true
+    }
+
+    private fun takePendingResult(): Result? =
+            synchronized(lock) {
+                val result = pendingResult
+                pendingResult = null
+                result
+            }
 }

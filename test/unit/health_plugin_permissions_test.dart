@@ -31,9 +31,7 @@ void main() {
     test('hasPermissions forwards default permissions', () async {
       ctx.channel.when('hasPermissions', true);
 
-      final result = await ctx.health.hasPermissions(
-        [HealthDataType.HEART_RATE, HealthDataType.WEIGHT],
-      );
+      final result = await ctx.health.hasPermissions([HealthDataType.HEART_RATE, HealthDataType.WEIGHT]);
 
       expect(result, isTrue);
       final call = ctx.channel.lastCallFor('hasPermissions');
@@ -55,28 +53,34 @@ void main() {
 
     test('requestAuthorization rejects write access for read-only types', () {
       expect(
-        () => ctx.health.requestAuthorization(
-          [HealthDataType.ELECTROCARDIOGRAM],
-          permissions: [HealthDataAccess.WRITE],
-        ),
+        () =>
+            ctx.health.requestAuthorization([HealthDataType.ELECTROCARDIOGRAM], permissions: [HealthDataAccess.WRITE]),
         throwsA(isA<ArgumentError>()),
       );
     });
 
-    test('requestAuthorization forwards types and permissions', () async {
+    test('request completion does not imply the requested write was granted', () async {
       ctx.channel.when('requestAuthorization', true);
+      ctx.channel.when('getAuthorizationSnapshot', {
+        'available': true,
+        'types': [
+          {'type': 'WORKOUT', 'read': 'requestedOrUnknown', 'write': 'denied'},
+        ],
+      });
 
-      final result = await ctx.health.requestAuthorization(
-        [HealthDataType.STEPS],
-        permissions: [HealthDataAccess.READ],
+      final completed = await ctx.health.requestAuthorization(
+        [HealthDataType.WORKOUT],
+        permissions: [HealthDataAccess.WRITE],
       );
+      final snapshot = await ctx.health.getAuthorizationSnapshot([HealthDataType.WORKOUT]);
 
-      expect(result, isTrue);
+      expect(completed, isTrue);
+      expect(snapshot.forType(HealthDataType.WORKOUT).write, HealthAuthorizationState.denied);
       final call = ctx.channel.lastCallFor('requestAuthorization');
       expect(call, isNotNull);
       final args = Map<String, dynamic>.from(call!.arguments as Map);
-      expect(args['types'], [HealthDataType.STEPS.name]);
-      expect(args['permissions'], [HealthDataAccess.READ.index]);
+      expect(args['types'], [HealthDataType.WORKOUT.name]);
+      expect(args['permissions'], [HealthDataAccess.WRITE.index]);
     });
 
     test('revokePermissions calls channel', () async {

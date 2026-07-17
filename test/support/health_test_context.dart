@@ -10,17 +10,17 @@ class HealthTestContext {
     return HealthTestContext._(resolved);
   }
 
-  HealthTestContext._(this.deviceInfo)
-      : channel = MethodChannelHarness(),
-        health = Health(deviceInfo: deviceInfo);
+  HealthTestContext._(this.deviceInfo) : channel = MethodChannelHarness(), health = Health(deviceInfo: deviceInfo);
 
   final DeviceInfoPlugin deviceInfo;
   final MethodChannelHarness channel;
   final Health health;
 
-  Future<void> setUp({MethodCallResponder? responder}) async {
+  Future<void> setUp({MethodCallResponder? responder, bool configureHealth = true}) async {
     await channel.setUp(responder: responder);
-    await health.configure();
+    if (configureHealth) {
+      await health.configure();
+    }
   }
 
   Future<void> tearDown() async {

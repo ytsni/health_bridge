@@ -219,7 +219,7 @@ class HealthDataReader {
 
             if let quantitySamples = samples as? [HKQuantitySample] {
                 let dictionaries = quantitySamples.map { sample -> NSDictionary in
-                    return [
+                    var dictionary: [String: Any] = [
                         "uuid": "\(sample.uuid)",
                         "value": sample.quantity.doubleValue(
                             for: unit ?? HKUnit.internationalUnit()
@@ -235,6 +235,11 @@ class HealthDataReader {
                         "dataUnitKey": unit?.unitString,
                         "metadata": HealthUtilities.sanitizeMetadata(sample.metadata),
                     ]
+                    HealthUtilities.appendStableClientIdentity(
+                        from: sample.metadata,
+                        to: &dictionary
+                    )
+                    return dictionary as NSDictionary
                 }
                 DispatchQueue.main.async {
                     result(dictionaries)
@@ -505,7 +510,7 @@ class HealthDataReader {
 
             if let quantitySamples = samples as? [HKQuantitySample] {
                 let dictionaries = quantitySamples.map { sample -> NSDictionary in
-                    return [
+                    var dictionary: [String: Any] = [
                         "uuid": "\(sample.uuid)",
                         "value": sample.quantity.doubleValue(
                             for: unit ?? HKUnit.internationalUnit()
@@ -521,6 +526,11 @@ class HealthDataReader {
                         "dataUnitKey": unit?.unitString,
                         "metadata": HealthUtilities.sanitizeMetadata(sample.metadata),
                     ]
+                    HealthUtilities.appendStableClientIdentity(
+                        from: sample.metadata,
+                        to: &dictionary
+                    )
+                    return dictionary as NSDictionary
                 }
                 DispatchQueue.main.async {
                     result(dictionaries.first)

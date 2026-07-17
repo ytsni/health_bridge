@@ -1,3 +1,36 @@
+## 2.0.0
+
+### Breaking
+
+- Replaced the legacy `Future<String?> writeWorkoutData(...)` API with
+  `Future<HealthWorkoutWriteResult> writeWorkoutData(...)`.
+- Workout callers must now create and persist a frozen export envelope with
+  separate workout/energy UUIDs, `clientRecordVersion: 0`, endpoint UTC
+  offsets, recording provenance, and recording device.
+- A successful `requestAuthorization` callback now documents request
+  completion only. Use `getAuthorizationSnapshot` for per-type authorization
+  state and `hasPermissions` for legacy Android aggregate checks.
+
+### Added
+
+- Structured workout and energy write statuses, explicit submission certainty,
+  native record IDs, retryability, and platform diagnostics.
+- Source-scoped `lookupWorkoutData` reconciliation for independently persisted
+  workout and active-energy records.
+- Per-type authorization snapshots for every requested `HealthDataType`, with
+  exact mapped Android read/write grants, exact mapped HealthKit write state,
+  and HealthKit's privacy-preserving `requestedOrUnknown` read state.
+- Android own-origin lookup using the matching write grant without requiring
+  exercise or active-calorie read permission.
+
+### Behavior
+
+- Active-energy permission is optional. A workout can succeed as
+  `writtenWithoutEnergy` / `omittedPermission` without fabricating an energy
+  sample.
+- `mayHaveSubmitted` outcomes require lookup before retry, and retries must
+  reuse the original frozen envelope.
+
 ## 1.0.0
 
 Forked from [carp-dk/carp-health-flutter](https://github.com/carp-dk/carp-health-flutter) v13.3.1.

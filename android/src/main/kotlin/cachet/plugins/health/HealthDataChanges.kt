@@ -191,8 +191,7 @@ class HealthDataChanges(
         val workoutType =
             HealthConstants.workoutTypeReverseMap[record.exerciseType] ?: "OTHER"
 
-        return mapOf(
-            "uuid" to record.metadata.id,
+        return mutableMapOf<String, Any?>(
             "workoutActivityType" to workoutType,
             "totalDistance" to null,
             "totalDistanceUnit" to null,
@@ -203,9 +202,7 @@ class HealthDataChanges(
             "unit" to "MINUTES",
             "date_from" to record.startTime.toEpochMilli(),
             "date_to" to record.endTime.toEpochMilli(),
-            "source_id" to "",
-            "source_name" to record.metadata.dataOrigin.packageName,
             "recording_method" to record.metadata.recordingMethod,
-        )
+        ).apply { putAll(record.metadata.flutterIdentityFields()) }
     }
 }

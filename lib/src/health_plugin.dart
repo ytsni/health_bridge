@@ -41,10 +41,18 @@ class Health {
 
   String? _deviceId;
   final DeviceInfoPlugin _deviceInfo;
+  final bool Function() _workoutPlatformIsIOS;
+  final bool Function() _workoutPlatformIsAndroid;
   HealthConnectSdkStatus _healthConnectSdkStatus = HealthConnectSdkStatus.sdkUnavailable;
 
   /// Get an instance of the health plugin.
-  Health({DeviceInfoPlugin? deviceInfo}) : _deviceInfo = deviceInfo ?? DeviceInfoPlugin() {
+  Health({
+    DeviceInfoPlugin? deviceInfo,
+    @visibleForTesting bool Function()? workoutPlatformIsIOS,
+    @visibleForTesting bool Function()? workoutPlatformIsAndroid,
+  }) : _deviceInfo = deviceInfo ?? DeviceInfoPlugin(),
+       _workoutPlatformIsIOS = workoutPlatformIsIOS ?? (() => Platform.isIOS),
+       _workoutPlatformIsAndroid = workoutPlatformIsAndroid ?? (() => Platform.isAndroid) {
     _registerFromJsonFunctions();
   }
 
@@ -85,8 +93,11 @@ class Health {
     }
   }
 
-  /// Determines if the health data [types] have been granted with the specified
-  /// access rights [permissions].
+  /// Aggregate legacy convenience for checking whether health data [types]
+  /// have the specified access rights [permissions].
+  ///
+  /// Use [getAuthorizationSnapshot] when per-type state is required. This
+  /// aggregate result does not replace that exact snapshot.
   ///
   /// Returns:
   ///
@@ -130,6 +141,26 @@ class Health {
       "types": mTypes.map((type) => type.name).toList(),
       "permissions": mPermissions,
     });
+  }
+
+  /// Returns the per-type authorization state after a platform request.
+  ///
+  /// Every [HealthDataType] may be requested. A platform reports an unmapped
+  /// type as [HealthAuthorizationState.unsupported]. HealthKit cannot disclose
+  /// exact read access, so mapped iOS reads are
+  /// [HealthAuthorizationState.requestedOrUnknown]; its write states are exact.
+  ///
+  /// This method does not use the Android availability guard. Platform
+  /// unavailability is represented by an immutable snapshot with
+  /// [HealthAuthorizationSnapshot.available] set to false.
+  Future<HealthAuthorizationSnapshot> getAuthorizationSnapshot(List<HealthDataType> types) async {
+    if (types.isEmpty || types.toSet().length != types.length) {
+      throw ArgumentError.value(types, 'types', 'must be nonempty and unique');
+    }
+    final value = await _channel.invokeMethod<Object?>('getAuthorizationSnapshot', {
+      'types': types.map((type) => type.name).toList(growable: false),
+    });
+    return HealthAuthorizationSnapshot.fromMethodChannel(value, types.toSet());
   }
 
   /// Revokes Google Health Connect permissions on Android of all types.
@@ -341,9 +372,11 @@ class Health {
     }
   }
 
-  /// Requests permissions to access health data [types].
+  /// Requests the platform permission flow for health data [types].
   ///
-  /// Returns true if successful, false otherwise.
+  /// A true result means only that the platform request completed without a
+  /// plugin error. It is never proof that every requested grant was accepted.
+  /// Re-query exact per-type state with [getAuthorizationSnapshot].
   ///
   /// Parameters:
   ///
@@ -357,10 +390,9 @@ class Health {
   ///
   ///  * This method may block if permissions are already granted. Hence, check
   ///    [hasPermissions] before calling this method.
-  ///  * As Apple HealthKit will not disclose if READ access has been granted for
-  ///    a data type due to privacy concern, this method will return **true if
-  ///    the window asking for permission was showed to the user without errors**
-  ///    if it is called on iOS with a READ or READ_WRITE access.
+  ///  * Apple HealthKit does not disclose exact READ grants. The authorization
+  ///    snapshot represents mapped iOS reads as
+  ///    [HealthAuthorizationState.requestedOrUnknown].
   Future<bool> requestAuthorization(List<HealthDataType> types, {List<HealthDataAccess>? permissions}) async {
     await _checkIfHealthConnectAvailableOnAndroid();
     if (permissions != null && permissions.length != types.length) {
@@ -1243,10 +1275,7 @@ class Health {
   /// Fetch the next page of changes for a previously created token.
   ///
   /// Android only. Returns null on iOS or if an error occurs.
-  Future<HealthChangesResponse?> getChanges({
-    required String changesToken,
-    bool includeSelf = false,
-  }) async {
+  Future<HealthChangesResponse?> getChanges({required String changesToken, bool includeSelf = false}) async {
     if (Platform.isIOS) return null;
 
     await _checkIfHealthConnectAvailableOnAndroid();
@@ -1496,61 +1525,86 @@ class Health {
 
   /// Write workout data to Apple Health or Google Health Connect.
   ///
-  /// Returns true if the workout data was successfully added.
-  ///
-  /// Parameters:
-  ///  - [activityType] The type of activity performed.
-  ///  - [start] The start time of the workout.
-  ///  - [end] The end time of the workout.
-  ///  - [totalEnergyBurned] The total energy burned during the workout.
-  ///  - [totalEnergyBurnedUnit] The UNIT used to measure [totalEnergyBurned]
-  ///    *ONLY FOR IOS* Default value is KILOCALORIE.
-  ///  - [totalDistance] The total distance traveled during the workout.
-  ///  - [totalDistanceUnit] The UNIT used to measure [totalDistance]
-  ///    *ONLY FOR IOS* Default value is METER.
-  ///  - [title] The title of the workout.
-  ///    *ONLY FOR HEALTH CONNECT* Default value is the [activityType], e.g. "STRENGTH_TRAINING".
-  ///  - [recordingMethod] The recording method of the data point, automatic by default (on iOS this can only be automatic or manual).
-  Future<String?> writeWorkoutData({
+  /// The type-specific client IDs and version identify one frozen logical
+  /// export. Reuse them when reconciling an ambiguous submission.
+  Future<HealthWorkoutWriteResult> writeWorkoutData({
+    required String workoutClientRecordId,
+    String? energyClientRecordId,
+    required int clientRecordVersion,
     required HealthWorkoutActivityType activityType,
     required DateTime start,
     required DateTime end,
-    int? totalEnergyBurned,
-    HealthDataUnit totalEnergyBurnedUnit = HealthDataUnit.KILOCALORIE,
-    int? totalDistance,
-    HealthDataUnit totalDistanceUnit = HealthDataUnit.METER,
-    String? title,
-    WorkoutMetadata? metadata,
-    RecordingMethod recordingMethod = RecordingMethod.automatic,
+    required int startZoneOffsetSeconds,
+    required int endZoneOffsetSeconds,
+    double? activeEnergyKcal,
+    required String title,
+    required HealthRecordingProvenance recordingProvenance,
+    required HealthRecordingDevice recordingDevice,
   }) async {
-    await _checkIfHealthConnectAvailableOnAndroid();
-    if (Platform.isIOS && [RecordingMethod.active, RecordingMethod.unknown].contains(recordingMethod)) {
-      throw ArgumentError("recordingMethod must be manual or automatic on iOS");
+    _validateWorkoutIdentity(workoutClientRecordId, 'workoutClientRecordId');
+    if (energyClientRecordId != null) {
+      _validateWorkoutIdentity(energyClientRecordId, 'energyClientRecordId');
+    }
+    if (clientRecordVersion != 0) {
+      throw ArgumentError.value(clientRecordVersion, 'clientRecordVersion', 'must be 0');
+    }
+    _validateWorkoutRange(start, end);
+    _validateZoneOffsetSeconds(startZoneOffsetSeconds, 'startZoneOffsetSeconds');
+    _validateZoneOffsetSeconds(endZoneOffsetSeconds, 'endZoneOffsetSeconds');
+    if ((activeEnergyKcal == null) != (energyClientRecordId == null)) {
+      throw ArgumentError('activeEnergyKcal and energyClientRecordId must be present together');
+    }
+    if (activeEnergyKcal != null && (!activeEnergyKcal.isFinite || activeEnergyKcal <= 0)) {
+      throw ArgumentError.value(activeEnergyKcal, 'activeEnergyKcal', 'must be finite and positive');
+    }
+    if (title.trim().isEmpty) {
+      throw ArgumentError.value(title, 'title', 'must be nonblank');
+    }
+    if (!_isWorkoutActivitySupported(
+      activityType,
+      isIOS: _workoutPlatformIsIOS(),
+      isAndroid: _workoutPlatformIsAndroid(),
+    )) {
+      throw HealthException(activityType, 'Workout activity type is not supported');
     }
 
-    // Check that value is on the current Platform
-    if (Platform.isIOS && !_isOnIOS(activityType)) {
-      throw HealthException(activityType, "Workout activity type $activityType is not supported on iOS");
-    } else if (Platform.isAndroid && !_isOnAndroid(activityType)) {
-      throw HealthException(activityType, "Workout activity type $activityType is not supported on Android");
-    }
-    final args = <String, dynamic>{
+    final value = await _channel.invokeMethod<Object?>('writeWorkoutData', {
+      'workoutClientRecordId': workoutClientRecordId.trim(),
+      'energyClientRecordId': energyClientRecordId?.trim(),
+      'clientRecordVersion': clientRecordVersion,
       'activityType': activityType.name,
       'startTime': start.millisecondsSinceEpoch,
       'endTime': end.millisecondsSinceEpoch,
-      'totalEnergyBurned': totalEnergyBurned,
-      'totalEnergyBurnedUnit': totalEnergyBurnedUnit.name,
-      'totalDistance': totalDistance,
-      'totalDistanceUnit': totalDistanceUnit.name,
-      'title': title,
-      'recordingMethod': recordingMethod.toInt(),
-    };
-    if (metadata != null) {
-      args['metadata'] = metadata.toJson();
+      'startZoneOffsetSeconds': startZoneOffsetSeconds,
+      'endZoneOffsetSeconds': endZoneOffsetSeconds,
+      'activeEnergyKcal': activeEnergyKcal,
+      'title': title.trim(),
+      'recordingProvenance': recordingProvenance.name,
+      'recordingDevice': recordingDevice.name,
+    });
+    return HealthWorkoutWriteResult.fromMethodChannel(value);
+  }
+
+  /// Reconciles this app's independently stored workout and energy records.
+  Future<HealthWorkoutLookupResult> lookupWorkoutData({
+    required String workoutClientRecordId,
+    String? energyClientRecordId,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    _validateWorkoutIdentity(workoutClientRecordId, 'workoutClientRecordId');
+    if (energyClientRecordId != null) {
+      _validateWorkoutIdentity(energyClientRecordId, 'energyClientRecordId');
     }
-    final result = await _channel.invokeMethod('writeWorkoutData', args);
-    if (result == null || result == false) return null;
-    return '$result';
+    _validateWorkoutRange(start, end);
+
+    final value = await _channel.invokeMethod<Object?>('lookupWorkoutData', {
+      'workoutClientRecordId': workoutClientRecordId.trim(),
+      'energyClientRecordId': energyClientRecordId?.trim(),
+      'startTime': start.millisecondsSinceEpoch,
+      'endTime': end.millisecondsSinceEpoch,
+    });
+    return HealthWorkoutLookupResult.fromMethodChannel(value);
   }
 
   /// Start a new workout route recording session on iOS or Android.
@@ -1584,7 +1638,7 @@ class Health {
   /// Finalises the workout route and associates it with an existing workout.
   ///
   /// Provide the [builderId] from [startWorkoutRoute], the platform-specific
-  /// [workoutUuid] (as returned from [writeWorkoutData] or another mechanism),
+  /// [workoutUuid] (such as [HealthWorkoutWriteResult.workoutRecordId]),
   /// and optional [metadata] that will be stored on the resulting route.
   ///
   /// Returns the created route’s UUID string.
@@ -1614,168 +1668,10 @@ class Health {
     return await _channel.invokeMethod<bool>('discardWorkoutRoute', args) == true;
   }
 
-  /// Check if the given [HealthWorkoutActivityType] is supported on the iOS platform
-  bool _isOnIOS(HealthWorkoutActivityType type) {
-    // Returns true if the type is part of the iOS set
-    return {
-      HealthWorkoutActivityType.AMERICAN_FOOTBALL,
-      HealthWorkoutActivityType.ARCHERY,
-      HealthWorkoutActivityType.AUSTRALIAN_FOOTBALL,
-      HealthWorkoutActivityType.BADMINTON,
-      HealthWorkoutActivityType.BARRE,
-      HealthWorkoutActivityType.BASEBALL,
-      HealthWorkoutActivityType.BASKETBALL,
-      HealthWorkoutActivityType.BIKING,
-      HealthWorkoutActivityType.BOWLING,
-      HealthWorkoutActivityType.BOXING,
-      HealthWorkoutActivityType.CARDIO_DANCE,
-      HealthWorkoutActivityType.CLIMBING,
-      HealthWorkoutActivityType.COOLDOWN,
-      HealthWorkoutActivityType.CORE_TRAINING,
-      HealthWorkoutActivityType.CRICKET,
-      HealthWorkoutActivityType.CROSS_COUNTRY_SKIING,
-      HealthWorkoutActivityType.CROSS_TRAINING,
-      HealthWorkoutActivityType.CURLING,
-      HealthWorkoutActivityType.DISC_SPORTS,
-      HealthWorkoutActivityType.DOWNHILL_SKIING,
-      HealthWorkoutActivityType.ELLIPTICAL,
-      HealthWorkoutActivityType.EQUESTRIAN_SPORTS,
-      HealthWorkoutActivityType.FENCING,
-      HealthWorkoutActivityType.FISHING,
-      HealthWorkoutActivityType.FITNESS_GAMING,
-      HealthWorkoutActivityType.FLEXIBILITY,
-      HealthWorkoutActivityType.FUNCTIONAL_STRENGTH_TRAINING,
-      HealthWorkoutActivityType.GOLF,
-      HealthWorkoutActivityType.GYMNASTICS,
-      HealthWorkoutActivityType.HAND_CYCLING,
-      HealthWorkoutActivityType.HANDBALL,
-      HealthWorkoutActivityType.HIGH_INTENSITY_INTERVAL_TRAINING,
-      HealthWorkoutActivityType.HIKING,
-      HealthWorkoutActivityType.HOCKEY,
-      HealthWorkoutActivityType.HUNTING,
-      HealthWorkoutActivityType.JUMP_ROPE,
-      HealthWorkoutActivityType.KICKBOXING,
-      HealthWorkoutActivityType.LACROSSE,
-      HealthWorkoutActivityType.MARTIAL_ARTS,
-      HealthWorkoutActivityType.MIND_AND_BODY,
-      HealthWorkoutActivityType.MIXED_CARDIO,
-      HealthWorkoutActivityType.OTHER,
-      HealthWorkoutActivityType.PADDLE_SPORTS,
-      HealthWorkoutActivityType.PICKLEBALL,
-      HealthWorkoutActivityType.PILATES,
-      HealthWorkoutActivityType.PLAY,
-      HealthWorkoutActivityType.PREPARATION_AND_RECOVERY,
-      HealthWorkoutActivityType.RACQUETBALL,
-      HealthWorkoutActivityType.ROWING,
-      HealthWorkoutActivityType.RUGBY,
-      HealthWorkoutActivityType.RUNNING,
-      HealthWorkoutActivityType.SAILING,
-      HealthWorkoutActivityType.SKATING,
-      HealthWorkoutActivityType.SNOW_SPORTS,
-      HealthWorkoutActivityType.SNOWBOARDING,
-      HealthWorkoutActivityType.SOCCER,
-      HealthWorkoutActivityType.SOCIAL_DANCE,
-      HealthWorkoutActivityType.SOFTBALL,
-      HealthWorkoutActivityType.SQUASH,
-      HealthWorkoutActivityType.STAIR_CLIMBING,
-      HealthWorkoutActivityType.STAIRS,
-      HealthWorkoutActivityType.STEP_TRAINING,
-      HealthWorkoutActivityType.SURFING,
-      HealthWorkoutActivityType.SWIMMING,
-      HealthWorkoutActivityType.TABLE_TENNIS,
-      HealthWorkoutActivityType.TAI_CHI,
-      HealthWorkoutActivityType.TENNIS,
-      HealthWorkoutActivityType.TRACK_AND_FIELD,
-      HealthWorkoutActivityType.TRADITIONAL_STRENGTH_TRAINING,
-      HealthWorkoutActivityType.VOLLEYBALL,
-      HealthWorkoutActivityType.WALKING,
-      HealthWorkoutActivityType.WATER_FITNESS,
-      HealthWorkoutActivityType.WATER_POLO,
-      HealthWorkoutActivityType.WATER_SPORTS,
-      HealthWorkoutActivityType.WHEELCHAIR_RUN_PACE,
-      HealthWorkoutActivityType.WHEELCHAIR_WALK_PACE,
-      HealthWorkoutActivityType.WRESTLING,
-      HealthWorkoutActivityType.YOGA,
-      HealthWorkoutActivityType.SWIMMING_OPEN_WATER,
-      HealthWorkoutActivityType.SWIMMING_POOL,
-      HealthWorkoutActivityType.UNDERWATER_DIVING,
-    }.contains(type);
-  }
-
-  /// Check if the given [HealthWorkoutActivityType] is supported on the Android platform
-  bool _isOnAndroid(HealthWorkoutActivityType type) {
-    // Returns true if the type is part of the Android set
-    return {
-      // Both
-      HealthWorkoutActivityType.AMERICAN_FOOTBALL,
-      HealthWorkoutActivityType.ARCHERY,
-      HealthWorkoutActivityType.AUSTRALIAN_FOOTBALL,
-      HealthWorkoutActivityType.BADMINTON,
-      HealthWorkoutActivityType.BASEBALL,
-      HealthWorkoutActivityType.BASKETBALL,
-      HealthWorkoutActivityType.BIKING,
-      HealthWorkoutActivityType.BOXING,
-      HealthWorkoutActivityType.CARDIO_DANCE,
-      HealthWorkoutActivityType.CRICKET,
-      HealthWorkoutActivityType.CROSS_COUNTRY_SKIING,
-      HealthWorkoutActivityType.CURLING,
-      HealthWorkoutActivityType.DOWNHILL_SKIING,
-      HealthWorkoutActivityType.ELLIPTICAL,
-      HealthWorkoutActivityType.FENCING,
-      HealthWorkoutActivityType.GOLF,
-      HealthWorkoutActivityType.GYMNASTICS,
-      HealthWorkoutActivityType.HANDBALL,
-      HealthWorkoutActivityType.HIGH_INTENSITY_INTERVAL_TRAINING,
-      HealthWorkoutActivityType.HIKING,
-      HealthWorkoutActivityType.HOCKEY,
-      HealthWorkoutActivityType.MARTIAL_ARTS,
-      HealthWorkoutActivityType.PILATES,
-      HealthWorkoutActivityType.RACQUETBALL,
-      HealthWorkoutActivityType.ROWING,
-      HealthWorkoutActivityType.RUGBY,
-      HealthWorkoutActivityType.RUNNING,
-      HealthWorkoutActivityType.SAILING,
-      HealthWorkoutActivityType.SKATING,
-      HealthWorkoutActivityType.SNOWBOARDING,
-      HealthWorkoutActivityType.SOCCER,
-      HealthWorkoutActivityType.SOCIAL_DANCE,
-      HealthWorkoutActivityType.SOFTBALL,
-      HealthWorkoutActivityType.SQUASH,
-      HealthWorkoutActivityType.STAIR_CLIMBING,
-      HealthWorkoutActivityType.TABLE_TENNIS,
-      HealthWorkoutActivityType.TENNIS,
-      HealthWorkoutActivityType.VOLLEYBALL,
-      HealthWorkoutActivityType.WALKING,
-      HealthWorkoutActivityType.WATER_POLO,
-      HealthWorkoutActivityType.WHEELCHAIR_RUN_PACE,
-      HealthWorkoutActivityType.WHEELCHAIR_WALK_PACE,
-      HealthWorkoutActivityType.YOGA,
-
-      // Android only
-      HealthWorkoutActivityType.BIKING_STATIONARY,
-      HealthWorkoutActivityType.CALISTHENICS,
-      HealthWorkoutActivityType.DANCING,
-      HealthWorkoutActivityType.FRISBEE_DISC,
-      HealthWorkoutActivityType.GUIDED_BREATHING,
-      HealthWorkoutActivityType.ICE_SKATING,
-      HealthWorkoutActivityType.PARAGLIDING,
-      HealthWorkoutActivityType.ROCK_CLIMBING,
-      HealthWorkoutActivityType.ROWING_MACHINE,
-      HealthWorkoutActivityType.RUNNING_TREADMILL,
-      HealthWorkoutActivityType.SCUBA_DIVING,
-      HealthWorkoutActivityType.SKIING,
-      HealthWorkoutActivityType.SNOWSHOEING,
-      HealthWorkoutActivityType.STAIR_CLIMBING_MACHINE,
-      HealthWorkoutActivityType.STRENGTH_TRAINING,
-      HealthWorkoutActivityType.SURFING,
-      HealthWorkoutActivityType.SWIMMING_OPEN_WATER,
-      HealthWorkoutActivityType.SWIMMING_POOL,
-      HealthWorkoutActivityType.WALKING_TREADMILL,
-      HealthWorkoutActivityType.WEIGHTLIFTING,
-      HealthWorkoutActivityType.WHEELCHAIR,
-      HealthWorkoutActivityType.OTHER,
-    }.contains(type);
-  }
+  /// Checks support using explicit platform flags so validation is testable.
+  bool _isWorkoutActivitySupported(HealthWorkoutActivityType type, {required bool isIOS, required bool isAndroid}) =>
+      (!isIOS || healthWorkoutActivityTypesIOS.contains(type)) &&
+      (!isAndroid || healthWorkoutActivityTypesAndroid.contains(type));
 }
 
 Map<String, dynamic> _serializeWorkoutRouteLocationForNative(WorkoutRouteLocation location) {

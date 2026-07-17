@@ -78,12 +78,6 @@ class WorkoutMetadata {
           workoutBrandName == other.workoutBrandName;
 
   @override
-  int get hashCode => Object.hash(
-    activityType,
-    appleFitnessPlusSession,
-    coachedWorkout,
-    groupFitness,
-    indoorWorkout,
-    workoutBrandName,
-  );
+  int get hashCode =>
+      Object.hash(activityType, appleFitnessPlusSession, coachedWorkout, groupFitness, indoorWorkout, workoutBrandName);
 }

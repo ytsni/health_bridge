@@ -94,15 +94,8 @@ class HealthFixtures {
   }) {
     return {
       'changes': [
-        {
-          'type': 'upsert',
-          'dataTypeKey': HealthDataType.HEART_RATE.name,
-          'dataPoint': numericPoint(),
-        },
-        {
-          'type': 'delete',
-          'recordId': 'deleted-record-1',
-        },
+        {'type': 'upsert', 'dataTypeKey': HealthDataType.HEART_RATE.name, 'dataPoint': numericPoint()},
+        {'type': 'delete', 'recordId': 'deleted-record-1'},
       ],
       'nextChangesToken': nextToken,
       'hasMore': hasMore,

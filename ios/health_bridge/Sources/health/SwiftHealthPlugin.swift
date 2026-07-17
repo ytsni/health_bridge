@@ -1,6 +1,9 @@
 import Flutter
 import HealthKit
 import UIKit
+#if canImport(HealthBridgeWorkoutCore)
+import HealthBridgeWorkoutCore
+#endif
 
 /// Main plugin class that coordinates health data operations
 public class SwiftHealthPlugin: NSObject, FlutterPlugin {
@@ -32,8 +35,7 @@ public class SwiftHealthPlugin: NSObject, FlutterPlugin {
     private lazy var healthDataWriter: HealthDataWriter = .init(
         healthStore: healthStore,
         dataTypesDict: dataTypesDict,
-        unitDict: unitDict,
-        workoutActivityTypeMap: workoutActivityTypeMap
+        unitDict: unitDict
     )
 
     private lazy var healthDataOperations: HealthDataOperations = .init(
@@ -42,6 +44,21 @@ public class SwiftHealthPlugin: NSObject, FlutterPlugin {
         characteristicsTypesDict: characteristicsTypesDict,
         nutritionList: nutritionList
     )
+
+    private lazy var healthWorkoutChannelHandler: HealthWorkoutChannelHandler = {
+        var authorizationTypes = dataTypesDict.mapValues { $0 as HKObjectType }
+        authorizationTypes.merge(
+            characteristicsTypesDict.mapValues { $0 as HKObjectType },
+            uniquingKeysWith: { existing, _ in existing }
+        )
+        let operations = try? HealthWorkoutOperations(
+            store: HealthKitWorkoutStore(
+                healthStore: healthStore,
+                authorizationTypes: authorizationTypes
+            )
+        )
+        return HealthWorkoutChannelHandler(operations: operations)
+    }()
 
     public static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(
@@ -125,13 +142,13 @@ public class SwiftHealthPlugin: NSObject, FlutterPlugin {
             }
 
         case "writeWorkoutData":
-            do {
-                try healthDataWriter.writeWorkoutData(call: call, result: result)
-            } catch {
-                result(FlutterError(code: "WRITE_ERROR",
-                                    message: "Error writing workout: \(error.localizedDescription)",
-                                    details: nil))
-            }
+            healthWorkoutChannelHandler.write(call: call, result: result)
+
+        case "lookupWorkoutData":
+            healthWorkoutChannelHandler.lookup(call: call, result: result)
+
+        case "getAuthorizationSnapshot":
+            healthWorkoutChannelHandler.authorizationSnapshot(call: call, result: result)
 
         case "startWorkoutRoute":
             healthDataWriter.startWorkoutRoute(call: call, result: result)
@@ -624,7 +641,6 @@ public class SwiftHealthPlugin: NSObject, FlutterPlugin {
         workoutActivityTypeMap["TABLE_TENNIS"] = .tableTennis
         workoutActivityTypeMap["TENNIS"] = .tennis
         workoutActivityTypeMap["CLIMBING"] = .climbing
-        workoutActivityTypeMap["ROCK_CLIMBING"] = .climbing // Supported due to combining with Android naming
         workoutActivityTypeMap["EQUESTRIAN_SPORTS"] = .equestrianSports
         workoutActivityTypeMap["FISHING"] = .fishing
         workoutActivityTypeMap["GOLF"] = .golf

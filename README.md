@@ -11,7 +11,9 @@ A maintained fork of [`health`](https://pub.dev/packages/health) (carp-dk/carp-h
 - Fixed `workoutSummary` always null on Android (camelCase/snake_case mismatch)
 - Fixed outdoor run mapped to RUNNING_TREADMILL on iOS
 - Deduplicated workout metrics to prevent double-counting from multiple sources
-- `writeHealthData` / `writeWorkoutData` now return `String?` UUID instead of `bool`
+- `writeHealthData` exposes the created record UUID when available; workout
+  export now returns a structured write result with source-scoped lookup and
+  per-type authorization snapshots
 - Added VO2 Max, Cycling Power, Cycling Cadence, Mindfulness (Android) data types
 - Added WorkoutMetadata support for iOS (brand name, indoor/outdoor, coached, etc.)
 - AGP 9.x compatibility
@@ -52,6 +54,35 @@ First, add the following 2 entries to the `Info.plist`:
 
 Then, open your Flutter project in Xcode by right clicking on the "ios" folder and selecting "Open in Xcode". Next, enable "HealthKit" by adding a capability inside the "Signing & Capabilities" tab of the Runner target's settings.
 
+That capability must add the HealthKit entitlement to the app:
+
+```xml
+<key>com.apple.developer.healthkit</key>
+<true/>
+```
+
+HealthKit reports exact sharing (write) authorization, but deliberately does
+not disclose exact read authorization. `getAuthorizationSnapshot` therefore
+reports mapped iOS reads as `requestedOrUnknown`, never as a confirmed grant.
+It accepts any nonempty, duplicate-free list of `HealthDataType` values.
+Mapped types receive exact HealthKit write state; unmapped platform types are
+reported as `unsupported` without weakening the response-set contract.
+
+#### Authorization snapshot support matrix
+
+Every snapshot result contains exactly the requested type set (native entry
+order is not significant):
+
+| Platform state | Read state | Write state |
+| --- | --- | --- |
+| iOS, mapped HealthKit type | `requestedOrUnknown` | Exact `authorizationStatus(for:)` mapping: `authorized`, `denied`, or `notDetermined` |
+| Android, mapped Health Connect record | `authorized` when the read grant is present, otherwise `denied` | `authorized` when the write grant is present, otherwise `denied` |
+| Either platform, unmapped type | `unsupported` | `unsupported` |
+| Health service unavailable | `unavailable` | `unavailable` |
+
+Android captures the granted-permission set once per snapshot, so mixed entries
+describe one coherent instant. A later call reflects permission revocation.
+
 ### Google Health Connect (Android)
 
 Health Connect requires the following lines in the `AndroidManifest.xml` file (see also the example app):
@@ -89,6 +120,22 @@ An example of asking for permission to read and write heart rate data is shown b
 <uses-permission android:name="android.permission.health.READ_HEART_RATE"/>
 <uses-permission android:name="android.permission.health.WRITE_HEART_RATE"/>
 ```
+
+For workout export, request only the permissions for the records being
+written:
+
+```xml
+<uses-permission android:name="android.permission.health.WRITE_EXERCISE"/>
+<!-- Add only when exporting estimated active energy. -->
+<uses-permission android:name="android.permission.health.WRITE_ACTIVE_CALORIES_BURNED"/>
+```
+
+`WRITE_EXERCISE` is always required. `WRITE_ACTIVE_CALORIES_BURNED` is required
+only when `energyClientRecordId` and `activeEnergyKcal` are supplied. V2
+reconciliation checks the matching write grant and filters every query to
+`DataOrigin(packageName)`; it does not request per-type exercise or active-
+calorie read access. The example manifest declares additional read permissions
+because other example screens demonstrate general health-data reads.
 
 If you plan to read or write Activity Intensity records (the `HealthDataType.ACTIVITY_INTENSITY` type), be sure to add the corresponding Health Connect permissions introduced with that data type:
 
@@ -198,8 +245,12 @@ Below is a simplified flow of how to use the plugin.
     HealthDataType.BLOOD_GLUCOSE,
   ];
 
-  // requesting access to the data types before reading them
-  bool requested = await health.requestAuthorization(types);
+  // Requesting access starts the platform flow. A true result means the
+  // request completed, not that every requested permission was granted.
+  bool requestCompleted = await health.requestAuthorization(types);
+  // Re-query generic permissions after the prompt. Android returns exact
+  // aggregate state; HealthKit generic reads remain null/unknown by design.
+  bool? aggregateAuthorization = await health.hasPermissions(types);
 
   var now = DateTime.now();
 
@@ -241,13 +292,126 @@ Below is a simplified flow of how to use the plugin.
   int? steps = await health.getTotalStepsInInterval(midnight, now);
 ```
 
+### Workout export V2
+
+Version 2 replaces the legacy nullable-UUID workout write with a structured,
+idempotent export contract. A logical export is one immutable envelope. Before
+the first native call, generate and persist:
+
+- a UUID for `workoutClientRecordId`;
+- a different UUID for `energyClientRecordId` when exporting active energy;
+- `clientRecordVersion: 0`;
+- the start/end instants and each endpoint's UTC offset; and
+- the activity, title, energy, provenance, and recording device.
+
+Reuse that exact envelope when reconciling or retrying the same logical sample.
+Do not regenerate IDs, timestamps, offsets, or values for a transport retry.
+New IDs mean a new logical sample and can create a duplicate.
+
+```dart
+// These values come from an envelope that the app persisted before the call.
+// A workout export needs these two entries; other health types can be queried
+// in the same snapshot when the surrounding feature also depends on them.
+final HealthAuthorizationSnapshot authorization =
+    await health.getAuthorizationSnapshot(const [
+  HealthDataType.WORKOUT,
+  HealthDataType.ACTIVE_ENERGY_BURNED,
+]);
+
+final HealthWorkoutWriteResult result = await health.writeWorkoutData(
+  workoutClientRecordId: workoutClientId,
+  energyClientRecordId: energyClientId,
+  clientRecordVersion: 0,
+  activityType: HealthWorkoutActivityType.WALKING,
+  start: frozenStart,
+  end: frozenEnd,
+  startZoneOffsetSeconds: frozenStartOffsetSeconds,
+  endZoneOffsetSeconds: frozenEndOffsetSeconds,
+  activeEnergyKcal: 120,
+  title: 'Morning walk',
+  recordingProvenance: HealthRecordingProvenance.activelyRecorded,
+  recordingDevice: HealthRecordingDevice.phone,
+);
+
+if (result.submissionCertainty ==
+    HealthSubmissionCertainty.mayHaveSubmitted) {
+  final HealthWorkoutLookupResult lookup = await health.lookupWorkoutData(
+    workoutClientRecordId: workoutClientId,
+    energyClientRecordId: energyClientId,
+    start: frozenStart,
+    end: frozenEnd,
+  );
+
+  // Retry only when lookup.derivedStatus is conclusively `absent`, and then
+  // reuse this same persisted envelope. `unavailable` is not `absent`.
+}
+```
+
+`HealthWorkoutWriteResult.status` is one of:
+
+- `written`, `alreadyPresent`, or `writtenWithoutEnergy` for confirmed workout
+  success;
+- `blockedWorkoutPermission`, `invalidInput`, or `unavailable` when native
+  submission did not occur;
+- `transientFailure` for a retryable failure known to be pre-submission;
+- `verificationRequired` when native submission may have occurred and lookup
+  is mandatory before any retry; or
+- `inconsistentNativeState` when energy is present without its workout and the
+  caller must surface/reconcile the inconsistency rather than submit blindly.
+
+`HealthEnergyWriteStatus` independently reports `notExpected`, `written`,
+`alreadyPresent`, `omittedPermission`, `absent`, `notSubmitted`, or
+`verificationRequired`. In particular, `writtenWithoutEnergy` together with
+`omittedPermission` is intentional workout-only success: the workout is
+present, the energy sample is absent, and the result contains only the workout
+record ID. It is not an all-or-nothing failure.
+
+Submission certainty is exactly `notSubmitted`, `mayHaveSubmitted`, or
+`submitted`. Never infer certainty from `retryable` or from a platform error
+string. A `mayHaveSubmitted` result requires `lookupWorkoutData` with the same
+IDs and frozen time range. Lookup reports each component as `present`,
+`absent`, `unavailable`, or (for optional energy only) `notExpected`; its
+derived status is `present`, `workoutOnly`, `absent`, `unavailable`, or
+`inconsistent`. After a `mayHaveSubmitted` result, only derived `absent`
+proves that resubmission is safe.
+
+Permission requests have similarly explicit semantics. A `true` result from
+`requestAuthorization` means the platform request completed without a plugin
+error; it is not proof that the user granted every permission.
+`getAuthorizationSnapshot` accepts any nonempty, duplicate-free list of
+`HealthDataType` values and returns exactly that type set. Entries report read
+and write state as `authorized`, `denied`, `notDetermined`,
+`requestedOrUnknown`, `unavailable`, or `unsupported`. Android reports exact
+read/write grants for mapped Health Connect records from one captured
+permission set. HealthKit reports exact sharing/write state from
+`HKHealthStore.authorizationStatus(for:)`, while mapped iOS reads remain
+`requestedOrUnknown` by Apple's privacy design. Either platform reports
+unmapped platform types as `unsupported`; an unavailable health service reports
+every requested read and write as `unavailable`.
+
+The automated suites validate Dart envelopes and codecs, Android Health
+Connect behavior against fakes, the Swift HealthKit state machine against a
+protocol fake, the Runner channel adapter, and clean platform compilation.
+They cannot prove the real permission UI, persistence in the user's health
+store, locked-device behavior, or another app's ingestion. Verify those on
+physical iOS and Android devices before release. Exporting a workout and active
+energy to Apple Health or Health Connect does **not** guarantee that
+MyFitnessPal—or any other third-party app—will import it or calculate matching
+calories; that remains controlled by the receiving app.
+
 ### Writing workout routes (iOS & Android)
 
 1. Request share/read permissions for both `HealthDataType.WORKOUT` and `HealthDataType.WORKOUT_ROUTE`, and ensure location permissions are granted (iOS: Core Location permissions; Android: `ACCESS_FINE_LOCATION` or `ACCESS_COARSE_LOCATION`).
 2. When the workout session starts, open a builder with `final builderId = await health.startWorkoutRoute();`.
 3. Collect GPS samples using `CLLocationManager` (or an equivalent service) and periodically push ordered batches of `WorkoutRouteLocation` values via `insertWorkoutRouteData`.
-4. Save the workout itself (for example, with `writeWorkoutData`) and capture the resulting HealthKit workout UUID.
-5. Call `finishWorkoutRoute(builderId: builderId, workoutUuid: workoutUuid, metadata: {...})` to commit the route, or `discardWorkoutRoute(builderId)` if the session is cancelled.
+4. Save the workout itself with `writeWorkoutData`. Use
+   `HealthWorkoutWriteResult.workoutRecordId` only for a confirmed submitted
+   result. If submission certainty is `mayHaveSubmitted`, run the mandatory
+   source-scoped lookup before deciding whether the same envelope may be
+   retried.
+5. Call `finishWorkoutRoute(builderId: builderId, workoutUuid: workoutRecordId, metadata: {...})`
+   with that confirmed workout ID to commit the route, or
+   `discardWorkoutRoute(builderId)` if the session is cancelled.
 
 > **Health Connect note:** Android only surfaces routes while your app is in the foreground, and
 > other apps' routes may return a `ConsentRequired` flag. Today (Health Connect 1.1.0) the system
@@ -451,104 +615,109 @@ The plugin supports the following [`HealthDataType`](lib/src/heath_data_types.da
 
 ## Workout Types
 
-The plugin supports the following [`HealthWorkoutActivityType`](lib/src/heath_data_types.dart).
+The plugin accepts the following [`HealthWorkoutActivityType`](lib/src/heath_data_types.dart) values. A `yes` means the Dart platform validator accepts that exact enum value; blank means it rejects it.
 
-| **Workout Type**                 | **Apple Health** | **Google Health Connect** | **Comments**                                                                                    |
-| -------------------------------- | ---------------- | ------------------------- | ----------------------------------------------------------------------------------------------- |
-| AMERICAN_FOOTBALL                | yes              | yes                       |                                                                                                 |
-| ARCHERY                          | yes              |                           |                                                                                                 |
-| AUSTRALIAN_FOOTBALL              | yes              | yes                       |                                                                                                 |
-| BADMINTON                        | yes              | yes                       |                                                                                                 |
-| BARRE                            | yes              |                           |                                                                                                 |
-| BASEBALL                         | yes              | yes                       |                                                                                                 |
-| BASKETBALL                       | yes              | yes                       |                                                                                                 |
-| BIKING                           | yes              | yes                       | on iOS this is CYCLING, but name changed here to fit with Android                               |
-| BOWLING                          | yes              |                           |                                                                                                 |
-| BOXING                           | yes              | yes                       |                                                                                                 |
-| CALISTHENICS                     |                  | yes                       |                                                                                                 |
-| CARDIO_DANCE                     | yes              | (yes)                     | on Android this will be stored as DANCING                                                       |
-| CLIMBING                         | yes              |                           |                                                                                                 |
-| COOLDOWN                         | yes              |                           |                                                                                                 |
-| CORE_TRAINING                    | yes              |                           |                                                                                                 |
-| CRICKET                          | yes              | yes                       |                                                                                                 |
-| CROSS_COUNTRY_SKIING             | yes              | (yes)                     | on Android this will be stored as SKIING                                                        |
-| CROSS_TRAINING                   | yes              |                           |                                                                                                 |
-| CURLING                          | yes              |                           |                                                                                                 |
-| DANCING                          | yes              | yes                       | on iOS this is DANCE, but name changed here to fit with Android                                 |
-| DISC_SPORTS                      | yes              |                           |                                                                                                 |
-| DOWNHILL_SKIING                  | yes              | (yes)                     | on Android this will be stored as SKIING                                                        |
-| ELLIPTICAL                       | yes              | yes                       |                                                                                                 |
-| EQUESTRIAN_SPORTS                | yes              |                           |                                                                                                 |
-| FENCING                          | yes              | yes                       |                                                                                                 |
-| FISHING                          | yes              |                           |                                                                                                 |
-| FITNESS_GAMING                   | yes              |                           |                                                                                                 |
-| FLEXIBILITY                      | yes              |                           |                                                                                                 |
-| FRISBEE_DISC                     |                  | yes                       |                                                                                                 |
-| FUNCTIONAL_STRENGTH_TRAINING     | yes              | (yes)                     | on Android this will be stored as STRENGTH_TRAINING                                             |
-| GOLF                             | yes              | yes                       |                                                                                                 |
-| GUIDED_BREATHING                 |                  | yes                       |                                                                                                 |
-| GYMNASTICS                       | yes              | yes                       |                                                                                                 |
-| HAND_CYCLING                     | yes              |                           |                                                                                                 |
-| HANDBALL                         | yes              | yes                       |                                                                                                 |
-| HIGH_INTENSITY_INTERVAL_TRAINING | yes              | yes                       |                                                                                                 |
-| HIKING                           | yes              | yes                       |                                                                                                 |
-| HOCKEY                           | yes              |                           |                                                                                                 |
-| HUNTING                          | yes              |                           |                                                                                                 |
-| JUMP_ROPE                        | yes              |                           |                                                                                                 |
-| KICKBOXING                       | yes              |                           |                                                                                                 |
-| LACROSSE                         | yes              |                           |                                                                                                 |
-| MARTIAL_ARTS                     | yes              | yes                       |                                                                                                 |
-| MIND_AND_BODY                    | yes              |                           |                                                                                                 |
-| MIXED_CARDIO                     | yes              |                           |                                                                                                 |
-| PADDLE_SPORTS                    | yes              |                           |                                                                                                 |
-| PARAGLIDING                      |                  | yes                       |                                                                                                 |
-| PICKLEBALL                       | yes              |                           |                                                                                                 |
-| PILATES                          | yes              | yes                       |                                                                                                 |
-| PLAY                             | yes              |                           |                                                                                                 |
-| PREPARATION_AND_RECOVERY         | yes              |                           |                                                                                                 |
-| RACQUETBALL                      | yes              | yes                       |                                                                                                 |
-| ROCK_CLIMBING                    | (yes)            | yes                       | on iOS this will be stored as CLIMBING                                                          |
-| ROWING                           | yes              | yes                       |                                                                                                 |
-| RUGBY                            | yes              | yes                       |                                                                                                 |
-| RUNNING                          | yes              | yes                       |                                                                                                 |
-| RUNNING_TREADMILL                | (yes)            | yes                       | on iOS this will be stored as RUNNING                                                           |
-| SAILING                          | yes              | yes                       |                                                                                                 |
-| SCUBA_DIVING                     |                  | yes                       |                                                                                                 |
-| SKATING                          | yes              | yes                       | On iOS this will be stored as SKATING_SPORTS                                                    |
-| SKIING                           | (yes)            | yes                       | on iOS you have to choose between CROSS_COUNTRY_SKIING and DOWNHILL_SKIING                      |
-| SNOW_SPORTS                      | yes              |                           |                                                                                                 |
-| SNOWBOARDING                     | yes              | yes                       |                                                                                                 |
-| SOCCER                           | yes              |                           |                                                                                                 |
-| SOCIAL_DANCE                     | yes              | (yes)                     | on Android this will be stored as DANCING                                                       |
-| SOFTBALL                         | yes              | yes                       |                                                                                                 |
-| SQUASH                           | yes              | yes                       |                                                                                                 |
-| STAIR_CLIMBING                   | yes              | yes                       |                                                                                                 |
-| STAIR_CLIMBING_MACHINE           |                  | yes                       |                                                                                                 |
-| STAIRS                           | yes              |                           |                                                                                                 |
-| STEP_TRAINING                    | yes              |                           |                                                                                                 |
-| STRENGTH_TRAINING                | (yes)            | yes                       | on iOS you have to choose between FUNCTIONAL_STRENGTH_TRAINING or TRADITIONAL_STRENGTH_TRAINING |
-| SURFING                          | yes              | yes                       | on iOS this is SURFING_SPORTS, but name changed here to fit with Android                        |
-| SWIMMING                         | yes              | (yes)                     | on Android you have to choose between SWIMMING_OPEN_WATER and SWIMMING_POOL                     |
-| SWIMMING_OPEN_WATER              | (yes)            | yes                       | on iOS this will be stored as SWIMMING                                                          |
-| SWIMMING_POOL                    | (yes)            | yes                       | on iOS this will be stored as SWIMMING                                                          |
-| TABLE_TENNIS                     | yes              | yes                       |                                                                                                 |
-| TAI_CHI                          | yes              |                           |                                                                                                 |
-| TENNIS                           | yes              | yes                       |                                                                                                 |
-| TRACK_AND_FIELD                  | yes              |                           |                                                                                                 |
-| TRADITIONAL_STRENGTH_TRAINING    | yes              | (yes)                     | on Android this will be stored as STRENGTH_TRAINING                                             |
-| UNDERWATER_DIVING                | yes              |                           |                                                                                                 |
-| VOLLEYBALL                       | yes              | yes                       |                                                                                                 |
-| WALKING                          | yes              | yes                       |                                                                                                 |
-| WATER_FITNESS                    | yes              |                           |                                                                                                 |
-| WATER_POLO                       | yes              | yes                       |                                                                                                 |
-| WATER_SPORTS                     | yes              |                           |                                                                                                 |
-| WEIGHTLIFTING                    |                  | yes                       |                                                                                                 |
-| WHEELCHAIR                       | (yes)            | yes                       | on iOS you have to choose between WHEELCHAIR_RUN_PACE or WHEELCHAIR_WALK_PACE                   |
-| WHEELCHAIR_RUN_PACE              | yes              | (yes)                     | on Android this will be stored as WHEELCHAIR                                                    |
-| WHEELCHAIR_WALK_PACE             | yes              | (yes)                     | on Android this will be stored as WHEELCHAIR                                                    |
-| WRESTLING                        | yes              |                           |                                                                                                 |
-| YOGA                             | yes              | yes                       |                                                                                                 |
-| OTHER                            | yes              | yes                       |                                                                                                 |
+| **Workout Type** | **Apple Health** | **Google Health Connect** | **Comments** |
+| --- | --- | --- | --- |
+| AMERICAN_FOOTBALL | yes | yes |  |
+| ARCHERY | yes |  |  |
+| AUSTRALIAN_FOOTBALL | yes | yes |  |
+| BADMINTON | yes | yes |  |
+| BASEBALL | yes | yes |  |
+| BASKETBALL | yes | yes |  |
+| BIKING | yes | yes |  |
+| BOXING | yes | yes |  |
+| CARDIO_DANCE | yes | yes |  |
+| CRICKET | yes | yes |  |
+| CROSS_COUNTRY_SKIING | yes | yes |  |
+| CURLING | yes |  |  |
+| DOWNHILL_SKIING | yes | yes |  |
+| ELLIPTICAL | yes | yes |  |
+| FENCING | yes | yes |  |
+| GOLF | yes | yes |  |
+| GYMNASTICS | yes | yes |  |
+| HANDBALL | yes | yes |  |
+| HIGH_INTENSITY_INTERVAL_TRAINING | yes | yes |  |
+| HIKING | yes | yes |  |
+| HOCKEY | yes | yes |  |
+| JUMP_ROPE | yes |  |  |
+| KICKBOXING | yes |  |  |
+| MARTIAL_ARTS | yes | yes |  |
+| PILATES | yes | yes |  |
+| RACQUETBALL | yes | yes |  |
+| ROWING | yes | yes |  |
+| RUGBY | yes | yes |  |
+| RUNNING | yes | yes |  |
+| SAILING | yes | yes |  |
+| SKATING | yes | yes |  |
+| SNOWBOARDING | yes | yes |  |
+| SOCCER | yes | yes |  |
+| SOFTBALL | yes | yes |  |
+| SQUASH | yes | yes |  |
+| STAIR_CLIMBING | yes | yes |  |
+| SWIMMING | yes |  |  |
+| TABLE_TENNIS | yes | yes |  |
+| TENNIS | yes | yes |  |
+| VOLLEYBALL | yes | yes |  |
+| WALKING | yes | yes |  |
+| WATER_POLO | yes | yes |  |
+| YOGA | yes | yes |  |
+| BARRE | yes |  |  |
+| BOWLING | yes |  |  |
+| CLIMBING | yes |  |  |
+| COOLDOWN | yes |  |  |
+| CORE_TRAINING | yes |  |  |
+| CROSS_TRAINING | yes |  |  |
+| DISC_SPORTS | yes |  |  |
+| EQUESTRIAN_SPORTS | yes |  |  |
+| FISHING | yes |  |  |
+| FITNESS_GAMING | yes |  |  |
+| FLEXIBILITY | yes |  |  |
+| FUNCTIONAL_STRENGTH_TRAINING | yes |  |  |
+| HAND_CYCLING | yes |  |  |
+| HUNTING | yes |  |  |
+| LACROSSE | yes |  |  |
+| MIND_AND_BODY | yes |  |  |
+| MIXED_CARDIO | yes |  |  |
+| PADDLE_SPORTS | yes |  |  |
+| PICKLEBALL | yes |  |  |
+| PLAY | yes |  |  |
+| PREPARATION_AND_RECOVERY | yes |  |  |
+| SNOW_SPORTS | yes |  |  |
+| SOCIAL_DANCE | yes | yes |  |
+| STAIRS | yes |  |  |
+| STEP_TRAINING | yes |  |  |
+| SURFING | yes | yes |  |
+| TAI_CHI | yes |  |  |
+| TRACK_AND_FIELD | yes |  |  |
+| TRADITIONAL_STRENGTH_TRAINING | yes |  |  |
+| WATER_FITNESS | yes |  |  |
+| WATER_SPORTS | yes |  |  |
+| WHEELCHAIR_RUN_PACE | yes | yes |  |
+| WHEELCHAIR_WALK_PACE | yes | yes |  |
+| WRESTLING | yes |  |  |
+| UNDERWATER_DIVING | yes |  | Requires iOS 17+ |
+| BIKING_STATIONARY |  | yes |  |
+| CALISTHENICS |  | yes |  |
+| DANCING |  | yes |  |
+| FRISBEE_DISC |  | yes |  |
+| GUIDED_BREATHING |  | yes |  |
+| ICE_SKATING |  | yes |  |
+| PARAGLIDING |  | yes |  |
+| ROCK_CLIMBING |  | yes |  |
+| ROWING_MACHINE |  | yes |  |
+| RUNNING_TREADMILL |  | yes |  |
+| SCUBA_DIVING |  | yes |  |
+| SKIING |  | yes |  |
+| SNOWSHOEING |  | yes |  |
+| STAIR_CLIMBING_MACHINE |  | yes |  |
+| STRENGTH_TRAINING |  | yes |  |
+| SWIMMING_OPEN_WATER | yes | yes |  |
+| SWIMMING_POOL | yes | yes |  |
+| WALKING_TREADMILL |  | yes |  |
+| WEIGHTLIFTING |  | yes |  |
+| WHEELCHAIR |  | yes |  |
+| OTHER | yes | yes |  |
 
 ## License
 

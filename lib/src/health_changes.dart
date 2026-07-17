@@ -22,13 +22,7 @@ class HealthChange {
   final String? recordId;
   final Map<String, dynamic>? rawDataPoint;
 
-  HealthChange._({
-    required this.type,
-    this.dataType,
-    this.dataPoint,
-    this.recordId,
-    this.rawDataPoint,
-  });
+  HealthChange._({required this.type, this.dataType, this.dataPoint, this.recordId, this.rawDataPoint});
 
   factory HealthChange.fromMethodChannel(Map<dynamic, dynamic> map) {
     final typeName = map['type'] as String?;
@@ -38,10 +32,7 @@ class HealthChange {
     );
 
     if (type == HealthChangeType.delete) {
-      return HealthChange._(
-        type: type,
-        recordId: map['recordId'] as String?,
-      );
+      return HealthChange._(type: type, recordId: map['recordId'] as String?);
     }
 
     final rawPoint = map['dataPoint'] as Map?;
@@ -53,11 +44,7 @@ class HealthChange {
     if (rawPoint != null) {
       rawDataPoint = Map<String, dynamic>.from(rawPoint);
       if (dataTypeKey != null && resolvedDataType != null) {
-        dataPoint = HealthDataPoint.fromHealthDataPoint(
-          resolvedDataType,
-          rawDataPoint,
-          null,
-        );
+        dataPoint = HealthDataPoint.fromHealthDataPoint(resolvedDataType, rawDataPoint, null);
       }
     }
 
@@ -83,18 +70,24 @@ class HealthChangesResponse {
     required this.changesTokenExpired,
   });
 
-  List<HealthDataPoint> get upsertedDataPoints =>
-      changes.where((change) => change.type == HealthChangeType.upsert).map((change) => change.dataPoint).whereType<HealthDataPoint>().toList();
+  List<HealthDataPoint> get upsertedDataPoints => changes
+      .where((change) => change.type == HealthChangeType.upsert)
+      .map((change) => change.dataPoint)
+      .whereType<HealthDataPoint>()
+      .toList();
 
-  List<String> get deletedRecordIds =>
-      changes.where((change) => change.type == HealthChangeType.delete).map((change) => change.recordId).whereType<String>().toList();
+  List<String> get deletedRecordIds => changes
+      .where((change) => change.type == HealthChangeType.delete)
+      .map((change) => change.recordId)
+      .whereType<String>()
+      .toList();
 
   factory HealthChangesResponse.fromMethodChannel(Map<dynamic, dynamic> map) {
     final rawChanges = map['changes'] as List? ?? const [];
     final changes = rawChanges
-      .whereType<Map<dynamic, dynamic>>()
-      .map((change) => HealthChange.fromMethodChannel(change))
-      .toList();
+        .whereType<Map<dynamic, dynamic>>()
+        .map((change) => HealthChange.fromMethodChannel(change))
+        .toList();
 
     return HealthChangesResponse(
       changes: changes,

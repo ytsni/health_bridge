@@ -15,19 +15,18 @@ class MethodChannelHarness {
   Future<void> setUp({MethodCallResponder? responder}) async {
     TestWidgetsFlutterBinding.ensureInitialized();
     _responder = responder;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
-      channel,
-      (MethodCall call) async {
-        calls.add(call);
-        if (_responder != null) {
-          return _responder!(call);
-        }
-        if (cannedResponses.containsKey(call.method)) {
-          return cannedResponses[call.method];
-        }
-        return null;
-      },
-    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      MethodCall call,
+    ) async {
+      calls.add(call);
+      if (_responder != null) {
+        return _responder!(call);
+      }
+      if (cannedResponses.containsKey(call.method)) {
+        return cannedResponses[call.method];
+      }
+      return null;
+    });
   }
 
   Future<void> tearDown() async {

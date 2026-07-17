@@ -12,7 +12,10 @@ Wrapper for Apple's HealthKit on iOS and Google's Health Connect on Android.
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'Michael Ryan' => 'michael@ryan.gg' }
   s.source           = { :path => '.' }
-  s.source_files = 'health_bridge/Sources/health/**/*.swift'
+  s.source_files = [
+    'health_bridge/Sources/health/**/*.swift',
+    'health_bridge/HealthBridgeWorkoutCore/Sources/HealthBridgeWorkoutCore/**/*.swift'
+  ]
   s.dependency 'Flutter'
   s.frameworks = 'HealthKit'
 

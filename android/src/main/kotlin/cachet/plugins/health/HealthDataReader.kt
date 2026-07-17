@@ -379,15 +379,12 @@ class HealthDataReader(
         )
 
         return mutableMapOf<String, Any?>(
-            "uuid" to session.metadata.id,
             "route" to routePoints,
             "date_from" to startTimestamp,
             "date_to" to endTimestamp,
-            "source_id" to session.metadata.dataOrigin.packageName,
-            "source_name" to session.metadata.dataOrigin.packageName,
             "recording_method" to session.metadata.recordingMethod,
             "metadata" to metadata,
-        )
+        ).apply { putAll(session.metadata.flutterIdentityFields()) }
     }
 
     private fun buildConsentRequiredRouteMap(session: ExerciseSessionRecord): Map<String, Any?> {
@@ -400,16 +397,13 @@ class HealthDataReader(
             "workout_start_time" to session.startTime.toEpochMilli(),
             "workout_end_time" to session.endTime.toEpochMilli(),
         )
-        return mapOf(
-            "uuid" to session.metadata.id,
+        return mutableMapOf<String, Any?>(
             "route" to emptyList<Map<String, Any?>>(),
             "date_from" to session.startTime.toEpochMilli(),
             "date_to" to session.endTime.toEpochMilli(),
-            "source_id" to session.metadata.dataOrigin.packageName,
-            "source_name" to session.metadata.dataOrigin.packageName,
             "recording_method" to session.metadata.recordingMethod,
             "metadata" to metadata,
-        )
+        ).apply { putAll(session.metadata.flutterIdentityFields()) }
     }
 
     /**
@@ -454,7 +448,7 @@ class HealthDataReader(
                             "date_from" to durationResult.startTime.toEpochMilli(),
                             "date_to" to durationResult.endTime.toEpochMilli(),
                             "source_name" to packageNames,
-                            "source_id" to "",
+                            "source_id" to packageNames,
                             "is_manual_entry" to packageNames.contains("user_input")
                         )
                         healthConnectData.add(data)
@@ -727,8 +721,7 @@ class HealthDataReader(
 
             // Add final datapoint
             healthConnectData.add(
-                mapOf<String, Any?>(
-                    "uuid" to record.metadata.id,
+                mutableMapOf<String, Any?>(
                     "workoutActivityType" to
                             (HealthConstants.workoutTypeMap
                                 .filterValues { it == record.exerciseType }
@@ -743,9 +736,7 @@ class HealthDataReader(
                     "unit" to "MINUTES",
                     "date_from" to record.startTime.toEpochMilli(),
                     "date_to" to record.endTime.toEpochMilli(),
-                    "source_id" to "",
-                    "source_name" to record.metadata.dataOrigin.packageName,
-                ),
+                ).apply { putAll(record.metadata.flutterIdentityFields()) },
             )
         }
     }

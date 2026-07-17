@@ -7,7 +7,6 @@ class HealthDataWriter {
     let healthStore: HKHealthStore
     let dataTypesDict: [String: HKSampleType]
     let unitDict: [String: HKUnit]
-    let workoutActivityTypeMap: [String: HKWorkoutActivityType]
     private var workoutRouteBuilders: [String: HKWorkoutRouteBuilder] = [:]
     private let workoutRouteBuildersQueue = DispatchQueue(
         label: "com.carp.health.workoutRouteBuilders"
@@ -22,15 +21,13 @@ class HealthDataWriter {
     ///   - healthStore: The HealthKit store
     ///   - dataTypesDict: Dictionary of data types
     ///   - unitDict: Dictionary of units
-    ///   - workoutActivityTypeMap: Dictionary of workout activity types
     init(
         healthStore: HKHealthStore, dataTypesDict: [String: HKSampleType],
-        unitDict: [String: HKUnit], workoutActivityTypeMap: [String: HKWorkoutActivityType]
+        unitDict: [String: HKUnit]
     ) {
         self.healthStore = healthStore
         self.dataTypesDict = dataTypesDict
         self.unitDict = unitDict
-        self.workoutActivityTypeMap = workoutActivityTypeMap
     }
 
     /// Returns a category value that is valid for the current iOS version.
@@ -832,165 +829,4 @@ class HealthDataWriter {
         )
     }
 
-    /// Writes workout data
-    /// - Parameters:
-    ///   - call: Flutter method call
-    ///   - result: Flutter result callback
-    func writeWorkoutData(call: FlutterMethodCall, result: @escaping FlutterResult) throws {
-        guard let arguments = call.arguments as? NSDictionary,
-              let activityType = (arguments["activityType"] as? String),
-              let startTime = (arguments["startTime"] as? NSNumber),
-              let endTime = (arguments["endTime"] as? NSNumber),
-              let activityTypeValue = workoutActivityTypeMap[activityType]
-        else {
-            throw PluginError(
-                message: "Invalid Arguments - activityType, startTime or endTime invalid"
-            )
-        }
-
-        var totalEnergyBurned: HKQuantity?
-        var totalDistance: HKQuantity? = nil
-
-        // Handle optional arguments
-        if let teb = (arguments["totalEnergyBurned"] as? Double) {
-            totalEnergyBurned = HKQuantity(
-                unit: unitDict[(arguments["totalEnergyBurnedUnit"] as! String)]!, doubleValue: teb
-            )
-        }
-        if let td = (arguments["totalDistance"] as? Double) {
-            totalDistance = HKQuantity(
-                unit: unitDict[(arguments["totalDistanceUnit"] as! String)]!, doubleValue: td
-            )
-        }
-
-        let dateFrom = HealthUtilities.dateFromMilliseconds(startTime.doubleValue)
-        let dateTo = HealthUtilities.dateFromMilliseconds(endTime.doubleValue)
-
-        // Build metadata from optional metadata dictionary
-        var metadata: [String: Any]? = nil
-        if let metadataDict = arguments["metadata"] as? [String: Any] {
-            var workoutMetadata = [String: Any]()
-
-            if #available(iOS 17.0, *) {
-                if let activityType = metadataDict["activityType"] as? String {
-                    workoutMetadata[HKMetadataKeyActivityType] = activityType
-                }
-                if let appleFitnessPlusSession = metadataDict["appleFitnessPlusSession"] as? Bool {
-                    workoutMetadata[HKMetadataKeyAppleFitnessPlusSession] = appleFitnessPlusSession
-                }
-            }
-
-            if let coachedWorkout = metadataDict["coachedWorkout"] as? Bool {
-                workoutMetadata[HKMetadataKeyCoachedWorkout] = coachedWorkout
-            }
-            if let groupFitness = metadataDict["groupFitness"] as? Bool {
-                workoutMetadata[HKMetadataKeyGroupFitness] = groupFitness
-            }
-            if let indoorWorkout = metadataDict["indoorWorkout"] as? Bool {
-                workoutMetadata[HKMetadataKeyIndoorWorkout] = indoorWorkout
-            }
-            if let workoutBrandName = metadataDict["workoutBrandName"] as? String {
-                workoutMetadata[HKMetadataKeyWorkoutBrandName] = workoutBrandName
-            }
-
-            if !workoutMetadata.isEmpty {
-                metadata = workoutMetadata
-            }
-        }
-
-        // Build the workout with HKWorkoutBuilder (iOS 12+). The old
-        // HKWorkout(...) convenience initializer was deprecated in iOS 17 and
-        // stored energy/distance only as opaque summary attributes with no
-        // underlying samples — which the Move ring and nutrition apps (e.g.
-        // MyFitnessPal) do NOT read. The builder instead lets us add real
-        // HKQuantitySamples (activeEnergyBurned, distance) that ARE surfaced to
-        // those consumers, so the calorie figure actually feeds a daily budget.
-        let configuration = HKWorkoutConfiguration()
-        configuration.activityType = activityTypeValue
-
-        let builder = HKWorkoutBuilder(
-            healthStore: healthStore,
-            configuration: configuration,
-            device: nil
-        )
-
-        // Real samples to attach, each spanning the full workout interval.
-        var samples: [HKSample] = []
-        if let energy = totalEnergyBurned {
-            samples.append(
-                HKCumulativeQuantitySample(
-                    type: HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned)!,
-                    quantity: energy,
-                    start: dateFrom,
-                    end: dateTo
-                )
-            )
-        }
-        if let distance = totalDistance {
-            samples.append(
-                HKCumulativeQuantitySample(
-                    type: HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning)!,
-                    quantity: distance,
-                    start: dateFrom,
-                    end: dateTo
-                )
-            )
-        }
-
-        // Single-fire result guard: the builder chain has several async
-        // completions and we must call `result` exactly once on every path.
-        var didReturn = false
-        func finish(_ value: Bool) {
-            if didReturn { return }
-            didReturn = true
-            DispatchQueue.main.async { result(value) }
-        }
-
-        func fail(_ context: String, _ error: Error?) {
-            if let error = error {
-                print("Error \(context): \(error.localizedDescription)")
-            }
-            finish(false)
-        }
-
-        // begin -> (add samples) -> (add metadata) -> end -> finish
-        builder.beginCollection(withStart: dateFrom) { began, beginError in
-            guard began else { return fail("beginning workout collection", beginError) }
-
-            let addMetadataThenEnd = {
-                let endCollection = {
-                    builder.endCollection(withEnd: dateTo) { ended, endError in
-                        guard ended else { return fail("ending workout collection", endError) }
-                        builder.finishWorkout { workout, finishError in
-                            if workout == nil {
-                                return fail("finishing workout", finishError)
-                            }
-                            finish(true)
-                        }
-                    }
-                }
-                if let metadata = metadata {
-                    builder.addMetadata(metadata) { _, metadataError in
-                        // Metadata is best-effort — a failure here shouldn't sink
-                        // the whole workout write.
-                        if let metadataError = metadataError {
-                            print("Error adding workout metadata: \(metadataError.localizedDescription)")
-                        }
-                        endCollection()
-                    }
-                } else {
-                    endCollection()
-                }
-            }
-
-            if samples.isEmpty {
-                addMetadataThenEnd()
-            } else {
-                builder.add(samples) { added, addError in
-                    guard added else { return fail("adding workout samples", addError) }
-                    addMetadataThenEnd()
-                }
-            }
-        }
-    }
 }

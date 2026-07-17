@@ -33,7 +33,11 @@ class HealthDataOperations {
         result(HKHealthStore.isHealthDataAvailable())
     }
 
-    /// Check if we have required permissions
+    /// Legacy best-effort permission check.
+    ///
+    /// HealthKit does not reveal exact read authorization. Call
+    /// `getAuthorizationSnapshot` when per-type write state and explicit unknown
+    /// read state are required.
     /// - Parameters:
     ///   - call: Flutter method call
     ///   - result: Flutter result callback
@@ -104,7 +108,11 @@ class HealthDataOperations {
         }
     }
 
-    /// Request authorization for health data
+    /// Request authorization for health data.
+    ///
+    /// The callback only reports whether HealthKit completed the authorization
+    /// request successfully. It does not mean every requested type was granted;
+    /// call `getAuthorizationSnapshot` afterward for current per-type state.
     /// - Parameters:
     ///   - call: Flutter method call
     ///   - result: Flutter result callback

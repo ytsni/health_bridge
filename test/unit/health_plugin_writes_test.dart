@@ -97,20 +97,16 @@ void main() {
   });
 
   group('writeActivityIntensity', () {
-    test(
-      'throws on non-Android platforms',
-      () {
-        expect(
-          () => ctx.health.writeActivityIntensity(
-            intensityLevel: ActivityIntensityLevel.moderate,
-            startTime: HealthFixtures.start,
-            endTime: HealthFixtures.end,
-          ),
-          throwsA(isA<UnsupportedError>()),
-        );
-      },
-      skip: Platform.isAndroid ? 'Not applicable on Android hosts' : null,
-    );
+    test('throws on non-Android platforms', () {
+      expect(
+        () => ctx.health.writeActivityIntensity(
+          intensityLevel: ActivityIntensityLevel.moderate,
+          startTime: HealthFixtures.start,
+          endTime: HealthFixtures.end,
+        ),
+        throwsA(isA<UnsupportedError>()),
+      );
+    }, skip: Platform.isAndroid ? 'Not applicable on Android hosts' : null);
   });
 
   group('writeBloodPressure', () {
@@ -136,11 +132,8 @@ void main() {
   group('writeBloodOxygen', () {
     test('rejects invalid time range', () {
       expect(
-        () => ctx.health.writeBloodOxygen(
-          saturation: 0.95,
-          startTime: HealthFixtures.end,
-          endTime: HealthFixtures.start,
-        ),
+        () =>
+            ctx.health.writeBloodOxygen(saturation: 0.95, startTime: HealthFixtures.end, endTime: HealthFixtures.start),
         throwsA(isA<ArgumentError>()),
       );
     });
@@ -182,27 +175,23 @@ void main() {
   });
 
   group('writeMenstruationFlow', () {
-    test(
-      'forwards flow payload',
-      () async {
-        ctx.channel.when('writeMenstruationFlow', true);
+    test('forwards flow payload', () async {
+      ctx.channel.when('writeMenstruationFlow', true);
 
-        final success = await ctx.health.writeMenstruationFlow(
-          flow: MenstrualFlow.medium,
-          startTime: HealthFixtures.start,
-          endTime: HealthFixtures.end,
-          isStartOfCycle: true,
-        );
+      final success = await ctx.health.writeMenstruationFlow(
+        flow: MenstrualFlow.medium,
+        startTime: HealthFixtures.start,
+        endTime: HealthFixtures.end,
+        isStartOfCycle: true,
+      );
 
-        expect(success, isTrue);
-        final call = ctx.channel.lastCallFor('writeMenstruationFlow');
-        expect(call, isNotNull);
-        final args = Map<String, dynamic>.from(call!.arguments as Map);
-        expect(args['value'], MenstrualFlow.medium.index);
-        expect(args['isStartOfCycle'], isTrue);
-      },
-      skip: Platform.isAndroid ? 'Android uses Health Connect value mapping' : null,
-    );
+      expect(success, isTrue);
+      final call = ctx.channel.lastCallFor('writeMenstruationFlow');
+      expect(call, isNotNull);
+      final args = Map<String, dynamic>.from(call!.arguments as Map);
+      expect(args['value'], MenstrualFlow.medium.index);
+      expect(args['isStartOfCycle'], isTrue);
+    }, skip: Platform.isAndroid ? 'Android uses Health Connect value mapping' : null);
   });
 
   group('writeAudiogram', () {
@@ -232,63 +221,51 @@ void main() {
       );
     });
 
-    test(
-      'forwards audiogram payload',
-      () async {
-        ctx.channel.when('writeAudiogram', true);
+    test('forwards audiogram payload', () async {
+      ctx.channel.when('writeAudiogram', true);
 
-        final success = await ctx.health.writeAudiogram(
-          frequencies: const [1000, 2000],
-          leftEarSensitivities: const [10, 12],
-          rightEarSensitivities: const [9, 11],
-          startTime: HealthFixtures.start,
-          endTime: HealthFixtures.end,
-        );
+      final success = await ctx.health.writeAudiogram(
+        frequencies: const [1000, 2000],
+        leftEarSensitivities: const [10, 12],
+        rightEarSensitivities: const [9, 11],
+        startTime: HealthFixtures.start,
+        endTime: HealthFixtures.end,
+      );
 
-        expect(success, isTrue);
-        final call = ctx.channel.lastCallFor('writeAudiogram');
-        expect(call, isNotNull);
-        final args = Map<String, dynamic>.from(call!.arguments as Map);
-        expect(args['frequencies'], [1000, 2000]);
-      },
-      skip: Platform.isAndroid ? 'Audiogram unsupported on Android' : null,
-    );
+      expect(success, isTrue);
+      final call = ctx.channel.lastCallFor('writeAudiogram');
+      expect(call, isNotNull);
+      final args = Map<String, dynamic>.from(call!.arguments as Map);
+      expect(args['frequencies'], [1000, 2000]);
+    }, skip: Platform.isAndroid ? 'Audiogram unsupported on Android' : null);
   });
 
   group('writeInsulinDelivery', () {
     test('rejects invalid reason', () {
       expect(
-        () => ctx.health.writeInsulinDelivery(
-          2,
-          InsulinDeliveryReason.NOT_SET,
-          HealthFixtures.start,
-          HealthFixtures.end,
-        ),
+        () =>
+            ctx.health.writeInsulinDelivery(2, InsulinDeliveryReason.NOT_SET, HealthFixtures.start, HealthFixtures.end),
         throwsA(isA<ArgumentError>()),
       );
     });
 
-    test(
-      'forwards insulin delivery payload',
-      () async {
-        ctx.channel.when('writeInsulinDelivery', true);
+    test('forwards insulin delivery payload', () async {
+      ctx.channel.when('writeInsulinDelivery', true);
 
-        final success = await ctx.health.writeInsulinDelivery(
-          3,
-          InsulinDeliveryReason.BOLUS,
-          HealthFixtures.start,
-          HealthFixtures.end,
-        );
+      final success = await ctx.health.writeInsulinDelivery(
+        3,
+        InsulinDeliveryReason.BOLUS,
+        HealthFixtures.start,
+        HealthFixtures.end,
+      );
 
-        expect(success, isTrue);
-        final call = ctx.channel.lastCallFor('writeInsulinDelivery');
-        expect(call, isNotNull);
-        final args = Map<String, dynamic>.from(call!.arguments as Map);
-        expect(args['units'], 3);
-        expect(args['reason'], InsulinDeliveryReason.BOLUS.index);
-      },
-      skip: Platform.isAndroid ? 'Insulin delivery unsupported on Android' : null,
-    );
+      expect(success, isTrue);
+      final call = ctx.channel.lastCallFor('writeInsulinDelivery');
+      expect(call, isNotNull);
+      final args = Map<String, dynamic>.from(call!.arguments as Map);
+      expect(args['units'], 3);
+      expect(args['reason'], InsulinDeliveryReason.BOLUS.index);
+    }, skip: Platform.isAndroid ? 'Insulin delivery unsupported on Android' : null);
   });
 
   group('delete APIs', () {
@@ -309,19 +286,13 @@ void main() {
     });
 
     test('deleteByUUID rejects empty UUID', () {
-      expect(
-        () => ctx.health.deleteByUUID(uuid: ''),
-        throwsA(isA<ArgumentError>()),
-      );
+      expect(() => ctx.health.deleteByUUID(uuid: ''), throwsA(isA<ArgumentError>()));
     });
 
     test('deleteByUUID forwards payload', () async {
       ctx.channel.when('deleteByUUID', true);
 
-      final success = await ctx.health.deleteByUUID(
-        uuid: 'uuid-1',
-        type: HealthDataType.HEART_RATE,
-      );
+      final success = await ctx.health.deleteByUUID(uuid: 'uuid-1', type: HealthDataType.HEART_RATE);
 
       expect(success, isTrue);
       final call = ctx.channel.lastCallFor('deleteByUUID');
@@ -371,10 +342,7 @@ void main() {
         verticalAccuracy: 8,
       );
 
-      final success = await ctx.health.insertWorkoutRouteData(
-        builderId: 'builder-1',
-        locations: [location],
-      );
+      final success = await ctx.health.insertWorkoutRouteData(builderId: 'builder-1', locations: [location]);
 
       expect(success, isTrue);
       final call = ctx.channel.lastCallFor('insertWorkoutRouteData');

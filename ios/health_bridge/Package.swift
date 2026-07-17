@@ -10,11 +10,20 @@ let package = Package(
     products: [
         .library(name: "health-bridge", targets: ["health_bridge"])
     ],
-    dependencies: [],
+    dependencies: [
+        .package(name: "FlutterFramework", path: "../FlutterFramework"),
+        .package(path: "HealthBridgeWorkoutCore")
+    ],
     targets: [
         .target(
             name: "health_bridge",
-            dependencies: [],
+            dependencies: [
+                .product(name: "FlutterFramework", package: "FlutterFramework"),
+                .product(
+                    name: "HealthBridgeWorkoutCore",
+                    package: "HealthBridgeWorkoutCore"
+                )
+            ],
             path: "Sources/health",
             linkerSettings: [
                 .linkedFramework("HealthKit")

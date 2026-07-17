@@ -192,12 +192,10 @@ class HealthDataConverter {
      * @param metadata Record metadata from Health Connect
      * @return MutableMap<String, Any?> Base record structure with common fields
      */
-    private fun createBaseRecord(metadata: Metadata): MutableMap<String, Any?> = mutableMapOf(
-        "uuid" to metadata.id,
-        "source_id" to "",
-        "source_name" to metadata.dataOrigin.packageName,
-        "recording_method" to metadata.recordingMethod
-    )
+    private fun createBaseRecord(metadata: Metadata): MutableMap<String, Any?> =
+        metadata.flutterIdentityFields().toMutableMap<String, Any?>().apply {
+            put("recording_method", metadata.recordingMethod)
+        }
 
     /**
      * Creates a specialized nutrition record with comprehensive nutrient information.
@@ -284,15 +282,12 @@ class HealthDataConverter {
         metadata: Metadata
     ): List<Map<String, Any>> {
         return listOf(
-            mapOf(
-                "uuid" to metadata.id,
+            mutableMapOf<String, Any>(
                 "stage" to stage.stage,
                 "value" to ChronoUnit.MINUTES.between(stage.startTime, stage.endTime),
                 "date_from" to stage.startTime.toEpochMilli(),
                 "date_to" to stage.endTime.toEpochMilli(),
-                "source_id" to "",
-                "source_name" to metadata.dataOrigin.packageName,
-            )
+            ).apply { putAll(metadata.flutterIdentityFields()) }
         )
     }
 

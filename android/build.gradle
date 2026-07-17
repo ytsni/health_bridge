@@ -31,6 +31,10 @@ if (!isAgp9OrAbove) {
 android {
     compileSdk 36
 
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
@@ -62,5 +66,7 @@ dependencies {
 
     implementation("androidx.health.connect:connect-client:1.2.0-alpha02")
     implementation "androidx.fragment:fragment-ktx:1.8.9"
-
+    testImplementation("androidx.health.connect:connect-testing:1.0.0-alpha03")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 }

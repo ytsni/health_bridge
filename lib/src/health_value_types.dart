@@ -1016,8 +1016,7 @@ class SkinTemperatureHealthValue extends HealthValue {
     final baseline = (dataMap['baseline'] as num?)?.toDouble();
 
     final locationRaw = dataMap['measurement_location'];
-    SkinTemperatureMeasurementLocation location =
-        SkinTemperatureMeasurementLocation.unknown;
+    SkinTemperatureMeasurementLocation location = SkinTemperatureMeasurementLocation.unknown;
     if (locationRaw is int) {
       location = SkinTemperatureMeasurementLocation.fromAndroidValue(locationRaw);
     } else if (locationRaw is String) {
@@ -1027,11 +1026,7 @@ class SkinTemperatureHealthValue extends HealthValue {
       );
     }
 
-    return SkinTemperatureHealthValue(
-      temperatureDelta: delta,
-      baseline: baseline,
-      measurementLocation: location,
-    );
+    return SkinTemperatureHealthValue(temperatureDelta: delta, baseline: baseline, measurementLocation: location);
   }
 
   @override
