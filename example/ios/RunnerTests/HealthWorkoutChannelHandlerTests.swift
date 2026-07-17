@@ -1,5 +1,6 @@
 import Flutter
 import Foundation
+import HealthKit
 import XCTest
 
 @testable import health_bridge
@@ -9,6 +10,125 @@ import XCTest
 #endif
 
 final class HealthWorkoutChannelHandlerTests: XCTestCase {
+    func testGenericScalarClientIdentityUsesHealthKitSyncMetadata() throws {
+        let clientRecordId = "018f8d7e-3333-7333-8333-333333333333"
+
+        let metadata = try HealthDataClientRecordMetadata.make(
+            isManualEntry: true,
+            clientRecordId: clientRecordId,
+            clientRecordVersion: NSNumber(value: 7.0)
+        )
+
+        XCTAssertEqual(metadata[HKMetadataKeyWasUserEntered] as? NSNumber, NSNumber(value: true))
+        XCTAssertEqual(metadata[HKMetadataKeyExternalUUID] as? String, clientRecordId)
+        XCTAssertEqual(metadata[HKMetadataKeySyncIdentifier] as? String, clientRecordId)
+        XCTAssertEqual(metadata[HKMetadataKeySyncVersion] as? Int, 7)
+    }
+
+    func testGenericScalarClientIdentityUsesSyncMetadataForArbitraryNonblankId() throws {
+        let clientRecordId = "plates:weight-entry:2026-07-17T12:30:00Z"
+
+        let metadata = try HealthDataClientRecordMetadata.make(
+            isManualEntry: false,
+            clientRecordId: clientRecordId,
+            clientRecordVersion: NSNumber(value: 42)
+        )
+
+        XCTAssertNil(metadata[HKMetadataKeyExternalUUID])
+        XCTAssertEqual(metadata[HKMetadataKeySyncIdentifier] as? String, clientRecordId)
+        XCTAssertEqual(metadata[HKMetadataKeySyncVersion] as? Int, 42)
+    }
+
+    func testGenericScalarClientIdentityAllowsLegacyPairlessWritesOnly() throws {
+        let legacyMetadata = try HealthDataClientRecordMetadata.make(
+            isManualEntry: false,
+            clientRecordId: NSNull(),
+            clientRecordVersion: NSNull()
+        )
+        XCTAssertEqual(legacyMetadata.count, 1)
+        XCTAssertEqual(legacyMetadata[HKMetadataKeyWasUserEntered] as? NSNumber, NSNumber(value: false))
+
+        let clientRecordId = "018f8d7e-3333-7333-8333-333333333333"
+        XCTAssertThrowsError(
+            try HealthDataClientRecordMetadata.make(
+                isManualEntry: false,
+                clientRecordId: clientRecordId,
+                clientRecordVersion: nil
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? HealthDataClientRecordMetadataError,
+                .incompleteClientRecordIdentity
+            )
+        }
+    }
+
+    func testGenericScalarClientIdentityRejectsIncompletePairsAndMalformedValues() {
+        let clientRecordId = "018f8d7e-3333-7333-8333-333333333333"
+
+        XCTAssertThrowsError(
+            try HealthDataClientRecordMetadata.make(
+                isManualEntry: false,
+                clientRecordId: clientRecordId,
+                clientRecordVersion: nil
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? HealthDataClientRecordMetadataError,
+                .incompleteClientRecordIdentity
+            )
+        }
+
+        XCTAssertThrowsError(
+            try HealthDataClientRecordMetadata.make(
+                isManualEntry: false,
+                clientRecordId: nil,
+                clientRecordVersion: NSNumber(value: 0)
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? HealthDataClientRecordMetadataError,
+                .incompleteClientRecordIdentity
+            )
+        }
+
+        for blankId in ["", " \n\t "] {
+            XCTAssertThrowsError(
+                try HealthDataClientRecordMetadata.make(
+                    isManualEntry: false,
+                    clientRecordId: blankId,
+                    clientRecordVersion: NSNumber(value: 0)
+                )
+            ) { error in
+                XCTAssertEqual(
+                    error as? HealthDataClientRecordMetadataError,
+                    .invalidClientRecordId
+                )
+            }
+        }
+
+        for invalidVersion in [
+            NSNumber(value: true),
+            NSNumber(value: 1.5),
+            NSNumber(value: Double.nan),
+            NSNumber(value: Double.infinity),
+            NSNumber(value: -1),
+        ] {
+            XCTAssertThrowsError(
+                try HealthDataClientRecordMetadata.make(
+                    isManualEntry: false,
+                    clientRecordId: clientRecordId,
+                    clientRecordVersion: invalidVersion
+                )
+            ) { error in
+                XCTAssertEqual(
+                    error as? HealthDataClientRecordMetadataError,
+                    .invalidClientRecordVersion
+                )
+            }
+        }
+    }
+
     func testWriteForwardsEveryFieldWithoutLosingPositiveOrNegativeInt64EpochsAndEncodesEveryResultField() throws {
         let operations = try FakeWorkoutOperations()
         operations.writeResult = try WorkoutWriteResult(
