@@ -22,6 +22,9 @@
   and HealthKit's privacy-preserving `requestedOrUnknown` read state.
 - Android own-origin lookup using the matching write grant without requiring
   exercise or active-calorie read permission.
+- Stable clientRecordId and clientRecordVersion metadata for scalar HealthKit
+  writes, allowing repeated weight and body-fat exports to replace the same
+  app-authored sample instead of creating duplicates.
 
 ### Behavior
 
