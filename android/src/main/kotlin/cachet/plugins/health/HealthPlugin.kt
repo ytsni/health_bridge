@@ -41,6 +41,7 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
     private var dataConverter: HealthDataConverter? = null
     private var dataChanges: HealthDataChanges? = null
     private var workoutMethodHandler: HealthWorkoutMethodHandler? = null
+    private var bodyMassMethodHandler: HealthBodyMassMethodHandler? = null
 
     // Health Connect availability
     private var healthConnectAvailable = false
@@ -93,6 +94,7 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
         dataConverter = null
         dataChanges = null
         workoutMethodHandler = null
+        bodyMassMethodHandler = null
         healthConnectAvailable = false
         healthConnectStatus = HealthConnectClient.SDK_UNAVAILABLE
     }
@@ -178,6 +180,13 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
                     checkNotNull(workoutMethodHandler).lookup(call.arguments, result)
                 } else {
                     result.success(unavailableLookupResult(call.arguments))
+                }
+            }
+            "lookupBodyMassData" -> {
+                if (healthConnectAvailable && bodyMassMethodHandler != null) {
+                    checkNotNull(bodyMassMethodHandler).lookup(call.arguments, result)
+                } else {
+                    result.success(unavailableBodyMassLookupResult(call.arguments))
                 }
             }
             "getAuthorizationSnapshot" -> {
@@ -305,6 +314,11 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
                         operationScope,
                         HealthWorkoutOperations(client, appContext.packageName),
                 )
+        bodyMassMethodHandler =
+                HealthBodyMassMethodHandler(
+                        operationScope,
+                        HealthBodyMassOperations(client, appContext, appContext.packageName),
+                )
     }
 
     private fun unavailableLookupResult(arguments: Any?): Map<String, Any?> {
@@ -322,6 +336,17 @@ class HealthPlugin(private var channel: MethodChannel? = null) :
                         platformCode = platformCode,
                 )
                 .toMap()
+    }
+
+    private fun unavailableBodyMassLookupResult(arguments: Any?): Map<String, Any?> {
+        val platformCode =
+                try {
+                    BodyMassLookupRequest.fromMap(arguments)
+                    "healthConnectUnavailable"
+                } catch (_: BodyMassLookupPayloadException) {
+                    "invalidInput"
+                }
+        return BodyMassLookupResultPayload.unavailable(platformCode).toMap()
     }
 
     /**

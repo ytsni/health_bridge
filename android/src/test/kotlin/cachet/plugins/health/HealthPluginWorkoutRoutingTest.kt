@@ -7,6 +7,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -141,6 +142,72 @@ class HealthPluginWorkoutRoutingTest {
 
         assertEquals(0, operations.lookupCalls)
         assertEquals("unavailable", result.successMap()["derivedStatus"])
+        assertEquals("invalidInput", result.successMap()["platformCode"])
+        result.assertOnlyOneSuccess()
+    }
+
+    @Test
+    fun lookupBodyMassData_unavailableReturnsStructuredResultWithoutInitializedHelpers() {
+        val result = RoutingResult()
+
+        HealthPlugin().onMethodCall(MethodCall("lookupBodyMassData", validBodyMassArguments()), result)
+
+        assertEquals("unavailable", result.successMap()["status"])
+        assertNull(result.successMap()["recordId"])
+        assertEquals("healthConnectUnavailable", result.successMap()["platformCode"])
+        result.assertOnlyOneSuccess()
+    }
+
+    @Test
+    fun lookupBodyMassData_unavailableMalformedPayloadStaysTyped() {
+        val result = RoutingResult()
+
+        HealthPlugin().onMethodCall(
+            MethodCall("lookupBodyMassData", validBodyMassArguments() + ("extra" to true)),
+            result,
+        )
+
+        assertEquals("unavailable", result.successMap()["status"])
+        assertEquals("invalidInput", result.successMap()["platformCode"])
+        result.assertOnlyOneSuccess()
+    }
+
+    @Test
+    fun lookupBodyMassData_availableRoutesOnlyThroughDedicatedMethodHandler() = runTest {
+        val operations = BodyMassRoutingOperations()
+        val plugin = HealthPlugin()
+        setField(plugin, "healthConnectAvailable", true)
+        setField(plugin, "bodyMassMethodHandler", HealthBodyMassMethodHandler(this, operations))
+        val result = RoutingResult()
+
+        plugin.onMethodCall(MethodCall("lookupBodyMassData", validBodyMassArguments()), result)
+        advanceUntilIdle()
+
+        assertEquals(1, operations.lookupCalls)
+        assertEquals(BODY_MASS_CLIENT_ID, operations.lastRequest?.clientRecordId)
+        assertEquals(BODY_MASS_MEASURED_AT, operations.lastRequest?.measuredAt)
+        assertEquals("present", result.successMap()["status"])
+        assertEquals("native-weight", result.successMap()["recordId"])
+        assertNull(result.successMap()["platformCode"])
+        result.assertOnlyOneSuccess()
+    }
+
+    @Test
+    fun lookupBodyMassData_availableRejectsAnyArgumentsBeyondTheExactPair() = runTest {
+        val operations = BodyMassRoutingOperations()
+        val plugin = HealthPlugin()
+        setField(plugin, "healthConnectAvailable", true)
+        setField(plugin, "bodyMassMethodHandler", HealthBodyMassMethodHandler(this, operations))
+        val result = RoutingResult()
+
+        plugin.onMethodCall(
+            MethodCall("lookupBodyMassData", validBodyMassArguments() + ("unexpected" to true)),
+            result,
+        )
+        advanceUntilIdle()
+
+        assertEquals(0, operations.lookupCalls)
+        assertEquals("unavailable", result.successMap()["status"])
         assertEquals("invalidInput", result.successMap()["platformCode"])
         result.assertOnlyOneSuccess()
     }
@@ -285,6 +352,22 @@ private class RoutingOperations : HealthWorkoutOperationsContract {
     }
 }
 
+private class BodyMassRoutingOperations : HealthBodyMassOperationsContract {
+    var lookupCalls = 0
+        private set
+    var lastRequest: BodyMassLookupRequest? = null
+        private set
+
+    override suspend fun lookup(request: BodyMassLookupRequest): BodyMassLookupResultPayload {
+        lookupCalls += 1
+        lastRequest = request
+        return BodyMassLookupResultPayload(
+            status = BodyMassLookupStatus.PRESENT,
+            recordId = "native-weight",
+        )
+    }
+}
+
 private class RoutingResult : Result {
     val successes = mutableListOf<Any?>()
     val errors = mutableListOf<Any?>()
@@ -375,7 +458,16 @@ private fun validLookupArguments(includeEnergy: Boolean = true): Map<String, Any
     return arguments
 }
 
+private fun validBodyMassArguments(): Map<String, Any?> =
+    mapOf(
+        "clientRecordId" to BODY_MASS_CLIENT_ID,
+        "measuredAt" to BODY_MASS_MEASURED_AT.toEpochMilli(),
+    )
+
 private fun validAuthorizationArguments(): Map<String, Any?> =
     mapOf(
         "types" to listOf(HealthConstants.WORKOUT, HealthConstants.ACTIVE_ENERGY_BURNED)
     )
+
+private const val BODY_MASS_CLIENT_ID = "018f8d7e-3333-7333-8333-333333333333"
+private val BODY_MASS_MEASURED_AT = Instant.parse("2026-07-20T12:00:00Z")

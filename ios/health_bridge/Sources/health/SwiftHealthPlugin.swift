@@ -60,6 +60,14 @@ public class SwiftHealthPlugin: NSObject, FlutterPlugin {
         return HealthWorkoutChannelHandler(operations: operations)
     }()
 
+    private lazy var healthBodyMassChannelHandler: HealthBodyMassChannelHandler = {
+        HealthBodyMassChannelHandler(
+            operations: HealthBodyMassLookupOperations(
+                executor: HealthKitBodyMassQueryExecutor(healthStore: healthStore)
+            )
+        )
+    }()
+
     public static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(
             name: "flutter_health", binaryMessenger: registrar.messenger()
@@ -146,6 +154,9 @@ public class SwiftHealthPlugin: NSObject, FlutterPlugin {
 
         case "lookupWorkoutData":
             healthWorkoutChannelHandler.lookup(call: call, result: result)
+
+        case "lookupBodyMassData":
+            healthBodyMassChannelHandler.lookup(call: call, result: result)
 
         case "getAuthorizationSnapshot":
             healthWorkoutChannelHandler.authorizationSnapshot(call: call, result: result)

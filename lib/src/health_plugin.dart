@@ -1607,6 +1607,27 @@ class Health {
     return HealthWorkoutLookupResult.fromMethodChannel(value);
   }
 
+  /// Looks up this app's body-mass record without requesting general history.
+  Future<HealthBodyMassLookupResult> lookupBodyMassData({
+    required String clientRecordId,
+    required DateTime measuredAt,
+  }) async {
+    final normalizedClientRecordId = clientRecordId.trim();
+    if (normalizedClientRecordId.isEmpty) {
+      throw ArgumentError.value(clientRecordId, 'clientRecordId', 'must be nonblank');
+    }
+    final utcMeasuredAt = measuredAt.toUtc();
+    if (utcMeasuredAt.microsecond != 0) {
+      throw ArgumentError.value(measuredAt, 'measuredAt', 'must be representable to the exact millisecond');
+    }
+
+    final value = await _channel.invokeMethod<Object?>('lookupBodyMassData', {
+      'clientRecordId': normalizedClientRecordId,
+      'measuredAt': utcMeasuredAt.millisecondsSinceEpoch,
+    });
+    return HealthBodyMassLookupResult.fromMethodChannel(value);
+  }
+
   /// Start a new workout route recording session on iOS or Android.
   ///
   /// Returns a builder identifier that must be supplied in subsequent calls
