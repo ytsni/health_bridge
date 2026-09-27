@@ -4,6 +4,11 @@ import HealthKit
 
 /// Class responsible for reading health data from HealthKit
 class HealthDataReader {
+    // Flutter's standard codec represents an absent optional dictionary value as null.
+    func channelValue<Value>(_ value: Value?) -> Any {
+        value.map { $0 as Any } ?? NSNull()
+    }
+
     let healthStore: HKHealthStore
     let dataTypesDict: [String: HKSampleType]
     let dataQuantityTypesDict: [String: HKQuantityType]
@@ -114,7 +119,7 @@ class HealthDataReader {
             let dateOfBirth = getBirthDate()
             result([
                 [
-                    "value": dateOfBirth?.timeIntervalSince1970,
+                    "value": channelValue(dateOfBirth?.timeIntervalSince1970),
                     "date_from": Int(dateFrom.timeIntervalSince1970 * 1000),
                     "date_to": Int(dateTo.timeIntervalSince1970 * 1000),
                     "source_id": sourceIdForCharacteristic,
@@ -127,7 +132,7 @@ class HealthDataReader {
             let gender = getGender()
             result([
                 [
-                    "value": gender?.rawValue,
+                    "value": channelValue(gender?.rawValue),
                     "date_from": Int(dateFrom.timeIntervalSince1970 * 1000),
                     "date_to": Int(dateTo.timeIntervalSince1970 * 1000),
                     "source_id": sourceIdForCharacteristic,
@@ -140,7 +145,7 @@ class HealthDataReader {
             let bloodType = getBloodType()
             result([
                 [
-                    "value": bloodType?.rawValue,
+                    "value": channelValue(bloodType?.rawValue),
                     "date_from": Int(dateFrom.timeIntervalSince1970 * 1000),
                     "date_to": Int(dateTo.timeIntervalSince1970 * 1000),
                     "source_id": sourceIdForCharacteristic,
@@ -232,7 +237,7 @@ class HealthDataReader {
                             (sample.metadata?[HKMetadataKeyWasUserEntered] as? Bool == true)
                             ? HealthConstants.RecordingMethod.manual.rawValue
                             : HealthConstants.RecordingMethod.automatic.rawValue,
-                        "dataUnitKey": unit?.unitString,
+                        "dataUnitKey": self.channelValue(unit?.unitString),
                         "metadata": HealthUtilities.sanitizeMetadata(sample.metadata),
                     ]
                     HealthUtilities.appendStableClientIdentity(
@@ -297,12 +302,12 @@ class HealthDataReader {
                     let distanceMeters = self.workoutDistanceMeters(sample)
                     return [
                         "uuid": "\(sample.uuid)",
-                        "workoutActivityType": self.workoutActivityTypeMap.first(where: {
+                        "workoutActivityType": self.channelValue(self.workoutActivityTypeMap.first(where: {
                             $0.value == sample.workoutActivityType
-                        })?.key,
-                        "totalEnergyBurned": energyKcal,
+                        })?.key),
+                        "totalEnergyBurned": self.channelValue(energyKcal),
                         "totalEnergyBurnedUnit": "KILOCALORIE",
-                        "totalDistance": distanceMeters,
+                        "totalDistance": self.channelValue(distanceMeters),
                         "totalDistanceUnit": "METER",
                         "date_from": Int(sample.startDate.timeIntervalSince1970 * 1000),
                         "date_to": Int(sample.endDate.timeIntervalSince1970 * 1000),
@@ -391,7 +396,7 @@ class HealthDataReader {
                                 }
                             }
                         }
-                        foods.append(sampleDict as! [String: Any?])
+                        foods.append(sampleDict)
                     }
                 }
 
@@ -458,10 +463,7 @@ class HealthDataReader {
             return
         }
 
-        var predicate = HKQuery.predicateForObjects(with: [uuid])
-
-        let sourceIdForCharacteristic = "com.apple.Health"
-        let sourceNameForCharacteristic = "Health"
+        let predicate = HKQuery.predicateForObjects(with: [uuid])
 
         let query = HKSampleQuery(
             sampleType: dataType,
@@ -523,7 +525,7 @@ class HealthDataReader {
                             (sample.metadata?[HKMetadataKeyWasUserEntered] as? Bool == true)
                             ? HealthConstants.RecordingMethod.manual.rawValue
                             : HealthConstants.RecordingMethod.automatic.rawValue,
-                        "dataUnitKey": unit?.unitString,
+                        "dataUnitKey": self.channelValue(unit?.unitString),
                         "metadata": HealthUtilities.sanitizeMetadata(sample.metadata),
                     ]
                     HealthUtilities.appendStableClientIdentity(
@@ -588,12 +590,12 @@ class HealthDataReader {
                     let distanceMeters = self.workoutDistanceMeters(sample)
                     return [
                         "uuid": "\(sample.uuid)",
-                        "workoutActivityType": self.workoutActivityTypeMap.first(where: {
+                        "workoutActivityType": self.channelValue(self.workoutActivityTypeMap.first(where: {
                             $0.value == sample.workoutActivityType
-                        })?.key,
-                        "totalEnergyBurned": energyKcal,
+                        })?.key),
+                        "totalEnergyBurned": self.channelValue(energyKcal),
                         "totalEnergyBurnedUnit": "KILOCALORIE",
-                        "totalDistance": distanceMeters,
+                        "totalDistance": self.channelValue(distanceMeters),
                         "totalDistanceUnit": "METER",
                         "date_from": Int(sample.startDate.timeIntervalSince1970 * 1000),
                         "date_to": Int(sample.endDate.timeIntervalSince1970 * 1000),
@@ -840,7 +842,7 @@ class HealthDataReader {
     }
 
     /// Helper to select correct HKStatisticsOptions for a given dataTypeKey
-    private func statisticsOption(for dataTypeKey: String) -> HKStatisticsOptions {
+    func statisticsOption(for dataTypeKey: String) -> HKStatisticsOptions {
         guard let quantityType = dataQuantityTypesDict[dataTypeKey] else {
             // Default to cumulativeSum for backward compatibility
             return .cumulativeSum
@@ -848,10 +850,10 @@ class HealthDataReader {
         switch quantityType.aggregationStyle {
         case .cumulative:
             return .cumulativeSum
-        case .discreteArithmetic:
-            return .discreteAverage
-        case .discrete:
-            // Other options are .discreteAverage, .discreteMin, or .discreteMax
+        case .discreteArithmetic, .discreteTemporallyWeighted,
+             .discreteEquivalentContinuousLevel:
+            // Discrete quantities support averages, not cumulative sums. This also
+            // matches the averageQuantity() read below the statistics query.
             return .discreteAverage
         @unknown default:
             return .cumulativeSum
@@ -1043,7 +1045,7 @@ class HealthDataReader {
         let endTimestamp = routePoints.last?["timestamp"] as? Int
             ?? Int(route.endDate.timeIntervalSince1970 * 1000)
 
-        var metadata = HealthUtilities.sanitizeMetadata(route.metadata) ?? [:]
+        var metadata = HealthUtilities.sanitizeMetadata(route.metadata)
         metadata["route_point_count"] = routePoints.count
 
         var dictionary: [String: Any] = [
@@ -1141,13 +1143,13 @@ class HealthDataReader {
                     let dict: NSDictionary = [
                         "uuid": "\(ecg.uuid)",
                         "voltageValues": voltageValues,
-                        "averageHeartRate": ecg.averageHeartRate?
+                        "averageHeartRate": self.channelValue(ecg.averageHeartRate?
                             .doubleValue(
                                 for: HKUnit.count()
                                     .unitDivided(by: HKUnit.minute())
-                            ),
-                        "samplingFrequency": ecg.samplingFrequency?
-                            .doubleValue(for: HKUnit.hertz()),
+                            )),
+                        "samplingFrequency": self.channelValue(ecg.samplingFrequency?
+                            .doubleValue(for: HKUnit.hertz())),
                         "classification": ecg.classification.rawValue,
                         "date_from": Int(ecg.startDate.timeIntervalSince1970 * 1000),
                         "date_to": Int(ecg.endDate.timeIntervalSince1970 * 1000),
