@@ -1,3 +1,36 @@
+## 2.1.0
+
+### Added
+
+- `lookupBodyMassData` on iOS and Android: an exact, source-scoped lookup of
+  one app-authored body-mass record by its client record ID and measurement
+  time, returning `HealthBodyMassLookupResult` (`present`, `absent`, or
+  `unavailable`) without requesting general weight history.
+
+### Fixed
+
+- Android: the plugin now applies the Kotlin Gradle plugin whenever an AGP 9
+  host turns `android.builtInKotlin` off, as Flutter's AGP 9 template does.
+  Previously the plugin's Kotlin sources went uncompiled and the host's
+  `GeneratedPluginRegistrant` failed with "cannot find symbol HealthPlugin".
+- iOS: resolved Swift compiler warnings in the HealthKit reader, writer, and
+  plugin. Absent optional values still reach Dart as `null`.
+- Android: resolved Kotlin compiler warnings (dead null checks on non-null
+  Health Connect responses, an unnecessary safe call, and inferred test list
+  types).
+
+### Dependencies
+
+- Android: Kotlin Gradle plugin 2.2.20 (was 1.9.22), `fragment-ktx` 1.9.1
+  (was 1.8.9), and `kotlinx-coroutines-test` 1.11.0 (was 1.8.1). The unused
+  Compose BOM is removed. `fragment-ktx` 1.9.1 also raises androidx
+  `collection` to 1.6.0 and `tracing` to 2.0.0 in host apps.
+- The Health Connect client stays on `1.2.0-alpha02`, the newest a
+  compileSdk 36 / AGP 8.11 host can build with: `alpha03` requires SDK
+  extension 19, and `alpha04` and later require compileSdk 37 and AGP 9.1.
+- Example app: Gradle 8.14.3, AGP 8.11.1, and Kotlin 2.2.20, meeting the
+  Flutter 3.49 Android minimums.
+
 ## 2.0.0
 
 ### Breaking
