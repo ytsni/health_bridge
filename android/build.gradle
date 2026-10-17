@@ -2,7 +2,7 @@ group 'cachet.plugins.health'
 version '1.2'
 
 buildscript {
-    ext.kotlin_version = '1.9.22'
+    ext.kotlin_version = '2.2.20'
     repositories {
         google()
         mavenCentral()
@@ -75,12 +75,11 @@ if (isAgp9OrAbove && !builtInKotlin) {
 }
 
 dependencies {
-    def composeBom = platform('androidx.compose:compose-bom:2025.09.00')
-    implementation(composeBom)
-
+    // Newest client a compileSdk 36 / AGP 8.11 host accepts: alpha03 needs SDK
+    // extension 19, and alpha04+ need compileSdk 37 and AGP 9.1.
     implementation("androidx.health.connect:connect-client:1.2.0-alpha02")
-    implementation "androidx.fragment:fragment-ktx:1.8.9"
+    implementation "androidx.fragment:fragment-ktx:1.9.1"
     testImplementation("androidx.health.connect:connect-testing:1.0.0-alpha03")
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 }
