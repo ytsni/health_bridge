@@ -273,9 +273,8 @@ class HealthDataOperations(
      * @param result Flutter result callback returning boolean success status
      */
     fun deleteByUUID(call: MethodCall, result: Result) {
-        val arguments = call.arguments as? HashMap<*, *>
-        val dataTypeKey = (arguments?.get("dataTypeKey") as? String)!!
-        val uuid = (arguments?.get("uuid") as? String)!!
+        val dataTypeKey = call.argument<String>("dataTypeKey")!!
+        val uuid = call.argument<String>("uuid")!!
 
         if (!HealthConstants.mapToType.containsKey(dataTypeKey)) {
             Log.w("FLUTTER_HEALTH::ERROR", "Datatype $dataTypeKey not found in HC")

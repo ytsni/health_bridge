@@ -207,7 +207,7 @@ class HealthWorkoutOperationsTest {
         val fake = fakeClient(permissions)
         fake.setPackageName(OTHER_PACKAGE)
         fake.insertRecords(
-            listOf(
+            listOf<Record>(
                 workoutRecord(WORKOUT_CLIENT_ID),
                 energyRecord(ENERGY_CLIENT_ID),
             )
@@ -227,7 +227,7 @@ class HealthWorkoutOperationsTest {
         permissions.grantPermissions(setOf(WRITE_EXERCISE, WRITE_ENERGY))
         val fake = fakeClient(permissions)
         fake.insertRecords(
-            listOf(
+            listOf<Record>(
                 workoutRecord(WRONG_WORKOUT_CLIENT_ID),
                 energyRecord(WRONG_ENERGY_CLIENT_ID),
             )
@@ -308,7 +308,7 @@ class HealthWorkoutOperationsTest {
             )
         val workoutId =
             fake.insertRecords(
-                    listOf(
+                    listOf<Record>(
                         workoutRecord(WORKOUT_CLIENT_ID),
                         energyRecord(ENERGY_CLIENT_ID),
                     )
@@ -467,7 +467,7 @@ class HealthWorkoutOperationsTest {
         val fake = fakeClient(permissions)
         fake.setPackageName(OTHER_PACKAGE)
         fake.insertRecords(
-            listOf(
+            listOf<Record>(
                 workoutRecord(WORKOUT_CLIENT_ID),
                 energyRecord(ENERGY_CLIENT_ID),
             )

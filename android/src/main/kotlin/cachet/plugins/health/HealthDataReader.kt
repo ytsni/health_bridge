@@ -163,16 +163,12 @@ class HealthDataReader(
                     val session = response.record
 
                     val point =
-                        if (session == null) {
-                            emptyMap()
-                        } else {
-                            when (val routeResult = session.exerciseRouteResult) {
-                                is Data ->
-                                    buildWorkoutRouteMap(session, routeResult.exerciseRoute)
-                                        ?: emptyMap()
-                                is ConsentRequired -> buildConsentRequiredRouteMap(session)
-                                else -> emptyMap()
-                            }
+                        when (val routeResult = session.exerciseRouteResult) {
+                            is Data ->
+                                buildWorkoutRouteMap(session, routeResult.exerciseRoute)
+                                    ?: emptyMap()
+                            is ConsentRequired -> buildConsentRequiredRouteMap(session)
+                            else -> emptyMap()
                         }
 
                     withContext(mainDispatcher) {
@@ -212,56 +208,49 @@ class HealthDataReader(
                 // Find the record with the matching UUID
                 val matchingRecord = response.record
 
-                if (matchingRecord != null) {
-                    // Handle special cases using shared logic
-                    when (dataType) {
-                        HealthConstants.WORKOUT -> {
+                // Handle special cases using shared logic
+                when (dataType) {
+                    HealthConstants.WORKOUT -> {
+                        val tempData = mutableListOf<Map<String, Any?>>()
+                        handleWorkoutData(listOf(matchingRecord), emptyList(), tempData)
+                        healthPoint = if (tempData.isNotEmpty()) tempData[0] else mapOf()
+                    }
+                    HealthConstants.SLEEP_SESSION,
+                    HealthConstants.SLEEP_ASLEEP,
+                    HealthConstants.SLEEP_AWAKE,
+                    HealthConstants.SLEEP_AWAKE_IN_BED,
+                    HealthConstants.SLEEP_LIGHT,
+                    HealthConstants.SLEEP_DEEP,
+                    HealthConstants.SLEEP_REM,
+                    HealthConstants.SLEEP_OUT_OF_BED,
+                    HealthConstants.SLEEP_UNKNOWN -> {
+                        if (matchingRecord is SleepSessionRecord) {
                             val tempData = mutableListOf<Map<String, Any?>>()
-                            handleWorkoutData(listOf(matchingRecord), emptyList(), tempData)
+                            handleSleepData(listOf(matchingRecord), emptyList(), dataType, tempData)
                             healthPoint = if (tempData.isNotEmpty()) tempData[0] else mapOf()
                         }
-                        HealthConstants.SLEEP_SESSION,
-                        HealthConstants.SLEEP_ASLEEP,
-                        HealthConstants.SLEEP_AWAKE,
-                        HealthConstants.SLEEP_AWAKE_IN_BED,
-                        HealthConstants.SLEEP_LIGHT,
-                        HealthConstants.SLEEP_DEEP,
-                        HealthConstants.SLEEP_REM,
-                        HealthConstants.SLEEP_OUT_OF_BED,
-                        HealthConstants.SLEEP_UNKNOWN -> {
-                            if (matchingRecord is SleepSessionRecord) {
-                                val tempData = mutableListOf<Map<String, Any?>>()
-                                handleSleepData(listOf(matchingRecord), emptyList(), dataType, tempData)
-                                healthPoint = if (tempData.isNotEmpty()) tempData[0] else mapOf()
-                            }
-                        }
-                        HealthConstants.WORKOUT_ROUTE -> {
-                            if (matchingRecord is ExerciseSessionRecord) {
-                                val routeMap = buildWorkoutRouteMap(
-                                    matchingRecord,
-                                    (matchingRecord.exerciseRouteResult as? Data)?.exerciseRoute
-                                )
-                                healthPoint = routeMap ?: mapOf()
-                            }
-                        }
-                        else -> {
-                            healthPoint = dataConverter.convertRecord(matchingRecord, dataType)[0]
+                    }
+                    HealthConstants.WORKOUT_ROUTE -> {
+                        if (matchingRecord is ExerciseSessionRecord) {
+                            val routeMap = buildWorkoutRouteMap(
+                                matchingRecord,
+                                (matchingRecord.exerciseRouteResult as? Data)?.exerciseRoute
+                            )
+                            healthPoint = routeMap ?: mapOf()
                         }
                     }
+                    else -> {
+                        healthPoint = dataConverter.convertRecord(matchingRecord, dataType)[0]
+                    }
+                }
 
-                    Log.i(
-                        "FLUTTER_HEALTH",
-                        "Success: $healthPoint"
-                    )
+                Log.i(
+                    "FLUTTER_HEALTH",
+                    "Success: $healthPoint"
+                )
 
-                    withContext(mainDispatcher) {
-                        result.success(healthPoint)
-                    }
-                } else {
-                    Log.e("FLUTTER_HEALTH::ERROR", "Record not found for UUID: $uuid")
-                    withContext(mainDispatcher) {
-                        result.success(null)
-                    }
+                withContext(mainDispatcher) {
+                    result.success(healthPoint)
                 }
             } catch (e: Exception) {
                 Log.e("FLUTTER_HEALTH::ERROR", "Error fetching record with UUID: $uuid")

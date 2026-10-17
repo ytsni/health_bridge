@@ -913,14 +913,6 @@ class HealthDataWriter(
                         workoutUUID
                     )
                 val session = response.record
-                if (session == null) {
-                    result.error(
-                        "ROUTE_ERROR",
-                        "Workout with UUID $workoutUUID not found",
-                        null
-                    )
-                    return@launch
-                }
 
                 if (locations.isEmpty()) {
                     workoutRouteBuilders.remove(builderId)
